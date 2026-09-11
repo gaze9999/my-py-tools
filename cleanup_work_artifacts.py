@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -320,8 +321,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    if args.min_age_days < 0 or args.older_than_days < 0:
-        print("error: day values cannot be negative", file=sys.stderr)
+    day_values = (args.min_age_days, args.older_than_days)
+    if any(not math.isfinite(value) or value < 0 or value > 365_000 for value in day_values):
+        print("error: day values must be finite and between 0 and 365000", file=sys.stderr)
         return 2
 
     output_directory = args.output_dir.expanduser().resolve()
