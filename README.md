@@ -60,14 +60,18 @@ Windows 請將上例的 `python3` 換成 `py -X utf8`。
 | `source_audit_extract.py` | 由 PDF／XLSX 產生可搜尋的 Markdown audit | 原始檔路徑、輸出路徑、選用 Mermaid override | 有格線的 PDF 表格與 XLSX 工作表會輸出 Markdown 表格；經來源雜湊核對的流程圖可輸出 Mermaid；原始檔才是契約來源 |
 | `extract_field_contract_matrix.py` | 從 `source-audit.md` 抽取欄位契約矩陣 | `--source-markdown`、`--output-markdown`、`--title`、`TOOL_FIELD_MATRIX_*` | 僅由 Markdown 表格抽取欄位資料；輸出為可讀、可追溯的欄位列表 |
 | `tokenizer.py` | 計算文字檔、`--text` 文字，或 stdin 的 token 數，優先用 tiktoken 精算，缺套件時回退估算 | `--input` / `--text` / stdin、`--encoding` | 非 tiktoken 路徑提供估算區間，不會取代正式 token 計價 |
-| `cleanup_work_artifacts.py` | 預覽、隔離並依保存天數清除開發快取與中間產物 | 一個或多個 `--root`、選用 `--include-work-dirs`／`--include-build` | 白名單掃描；保留 Git 追蹤內容及巢狀 repository，預設只預覽 |
+| `cleanup_work_artifacts.py` | 預覽、隔離並依保存天數清除開發快取與中間產物 | 目前目錄或一個以上 `--root`、選用 `--include-work-dirs`／`--include-build` | 白名單掃描；保留 Git 追蹤內容及巢狀 repository，預設只預覽 |
 
 ## 工作暫存清理
 
 清理器只使用 Python 標準函式庫，支援 Windows、macOS 與 Linux 的路徑格式。預設只預覽至少一天未修改的標準 cache；`work`、`tmp`、`temp`、`build`、`dist` 與 `*.egg-info` 必須明確選入。
 
 ```sh
-# 唯讀預覽
+# 唯讀預覽目前目錄；單獨寫 --root 也有相同效果
+python cleanup_work_artifacts.py
+python cleanup_work_artifacts.py --root
+
+# 唯讀預覽指定目錄
 python cleanup_work_artifacts.py --root /path/to/project
 
 # 將候選項目移到可復原的隔離區

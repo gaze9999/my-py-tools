@@ -2,6 +2,8 @@
 """Preview and quarantine disposable development caches and work artifacts.
 
 Examples:
+  python cleanup_work_artifacts.py
+  python cleanup_work_artifacts.py --root
   python cleanup_work_artifacts.py --root /path/to/project
   python cleanup_work_artifacts.py --root /path/to/project --include-work-dirs --apply
   python cleanup_work_artifacts.py --purge-quarantine --older-than-days 7
@@ -61,7 +63,7 @@ def default_output_directory() -> Path:
 
 def resolve_roots(values: list[str]) -> list[Path]:
     roots: list[Path] = []
-    for value in values:
+    for value in values or ["."]:
         root = Path(value).expanduser().resolve()
         if not root.is_dir():
             raise ValueError(f"Root does not exist or is not a directory: {root}")
@@ -69,8 +71,6 @@ def resolve_roots(values: list[str]) -> list[Path]:
             raise ValueError(f"Refusing to scan a filesystem root: {root}")
         if root not in roots:
             roots.append(root)
-    if not roots:
-        raise ValueError("Provide at least one --root, unless purging quarantine.")
     return roots
 
 
@@ -300,7 +300,14 @@ def purge_quarantine(base: Path, older_than_days: float, event_log: Path) -> tup
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", action="append", default=[], help="Directory to scan; may be repeated.")
+    parser.add_argument(
+        "--root",
+        action="append",
+        nargs="?",
+        const=".",
+        default=[],
+        help="Directory to scan; may be repeated. Omit its value to use the current directory.",
+    )
     parser.add_argument("--apply", action="store_true", help="Move candidates to quarantine; default is preview.")
     parser.add_argument("--include-build", action="store_true", help="Include untracked build/dist/*.egg-info directories.")
     parser.add_argument("--include-work-dirs", action="store_true", help="Include untracked work/.work/tmp/temp directories.")
