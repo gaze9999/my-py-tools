@@ -1,0 +1,9 @@
+{
+  "components": [
+    {
+      "source": "apps/example/src/app/example.component.ts",
+      "template": "apps/example/src/app/example.component.html",
+      "controls": ["name", "status"]
+    }
+  ]
+}
