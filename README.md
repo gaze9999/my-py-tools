@@ -1,8 +1,8 @@
-# 本機工具組
+# My Py Tools
 
-此目錄的工具不綁定特定交易碼或專案名稱。先將 `.env.example` 複製為 `.env`，填入目前專案的路徑；`.env` 僅保留在本機，不應提交。命令列的路徑參數會覆蓋 `.env` 預設值。
+可攜式 Python 工具集合，不綁定特定交易碼或專案名稱。下載或 clone 此 repository 後，可直接從根目錄執行工具。需要共用路徑設定時，可在根目錄自行建立 `.env`；此檔僅保留在本機，命令列參數會覆蓋其中的預設值。
 
-所有工具預設為唯讀；只有 `guarded_markdown_update.py` 在明確提供 `--write` 後才會寫入單一本機 Markdown 檔案。工具不會呼叫遠端文件服務、不會安裝相依套件、不會修改 Git 狀態，也不會取代原生編譯、型別檢查或瀏覽器測試。
+所有工具預設為唯讀。`guarded_markdown_update.py` 只有在明確提供 `--write` 後才會寫入單一本機 Markdown；`cleanup_work_artifacts.py` 只有在提供 `--apply` 後才會隔離候選檔案，永久清除隔離區還需另外使用 `--purge-quarantine`。工具不會呼叫遠端文件服務、不會自行安裝相依套件，也不會取代原生編譯、型別檢查或瀏覽器測試。
 
 ## 一次性安裝選用相依套件
 
@@ -60,12 +60,30 @@ Windows 請將上例的 `python3` 換成 `py -X utf8`。
 | `source_audit_extract.py` | 由 PDF／XLSX 產生可搜尋的 Markdown audit | 原始檔路徑、輸出路徑、選用 Mermaid override | 有格線的 PDF 表格與 XLSX 工作表會輸出 Markdown 表格；經來源雜湊核對的流程圖可輸出 Mermaid；原始檔才是契約來源 |
 | `extract_field_contract_matrix.py` | 從 `source-audit.md` 抽取欄位契約矩陣 | `--source-markdown`、`--output-markdown`、`--title`、`TOOL_FIELD_MATRIX_*` | 僅由 Markdown 表格抽取欄位資料；輸出為可讀、可追溯的欄位列表 |
 | `tokenizer.py` | 計算文字檔、`--text` 文字，或 stdin 的 token 數，優先用 tiktoken 精算，缺套件時回退估算 | `--input` / `--text` / stdin、`--encoding` | 非 tiktoken 路徑提供估算區間，不會取代正式 token 計價 |
+| `cleanup_work_artifacts.py` | 預覽、隔離並依保存天數清除開發快取與中間產物 | 一個或多個 `--root`、選用 `--include-work-dirs`／`--include-build` | 白名單掃描；保留 Git 追蹤內容及巢狀 repository，預設只預覽 |
+
+## 工作暫存清理
+
+清理器只使用 Python 標準函式庫，支援 Windows、macOS 與 Linux 的路徑格式。預設只預覽至少一天未修改的標準 cache；`work`、`tmp`、`temp`、`build`、`dist` 與 `*.egg-info` 必須明確選入。
+
+```sh
+# 唯讀預覽
+python cleanup_work_artifacts.py --root /path/to/project
+
+# 將候選項目移到可復原的隔離區
+python cleanup_work_artifacts.py --root /path/to/project --include-work-dirs --include-build --apply
+
+# 永久刪除隔離超過七天的批次
+python cleanup_work_artifacts.py --purge-quarantine --older-than-days 7
+```
+
+預設的 manifest、逐筆 JSONL log 與隔離內容位於 `~/.work-artifact-cleaner/`。可用 `--output-dir` 改到其他位置，或用 `--min-age-days 0` 納入剛產生的候選。隔離仍佔用磁碟空間，只有 purge 後才會真正釋放容量。
 
 `form_contract_check.py` 的契約請從 `contracts/forms.example.json` 複製後建立。它刻意要求明確欄位清單，不會從 PDF、試算表或現有程式碼猜測規則。
 
 影像型流程圖請以 `TOOL_DIAGRAM_FILE` 指定 JSON override。每筆需含 `page` 與完整 `mermaid` 字串；`source_sha256` 必須等於目前 PDF 雜湊。工具不會自行從圖片猜測節點或箭頭，來源改版時會拒絕套用舊圖。
 
-## `.env.example` 欄位說明
+## `.env` 欄位說明
 
 | 欄位 | 說明 |
 | --- | --- |
