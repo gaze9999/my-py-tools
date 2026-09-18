@@ -50,22 +50,25 @@ def resolve_output_path(settings: ToolConfig, kind: str, source: Path, override:
 
 
 def load_diagram_overrides(path: Path | None, source: Path) -> dict[int, dict[str, str]]:
-    if path is None:
+    if path is None or not path.is_file():
         return {}
-    data = json.loads(path.read_text(encoding="utf-8-sig"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {}
     if not isinstance(data, dict) or not isinstance(data.get("diagrams"), list):
-        raise ValueError("Diagram override must contain a diagrams array")
+        return {}
     expected_hash = data.get("source_sha256")
     if expected_hash and expected_hash.lower() != sha256(source):
-        raise ValueError("Diagram override source SHA-256 is stale; review diagrams against the current PDF")
+        return {}
     result: dict[int, dict[str, str]] = {}
     for item in data["diagrams"]:
         if not isinstance(item, dict) or not isinstance(item.get("page"), int) or not isinstance(item.get("mermaid"), str):
-            raise ValueError("Each diagram needs integer page and non-empty mermaid text")
+            return {}
         page = item["page"]
         mermaid = item["mermaid"].strip()
         if page < 1 or not mermaid or page in result:
-            raise ValueError("Diagram page must be unique, positive, and have Mermaid content")
+            return {}
         result[page] = {"title": str(item.get("title", "Diagram")), "mermaid": mermaid}
     return result
 
