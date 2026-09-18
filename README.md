@@ -61,6 +61,7 @@ Windows 請將上例的 `python3` 換成 `py -X utf8`。
 | `extract_field_contract_matrix.py` | 從 `source-audit.md` 抽取欄位契約矩陣 | `--source-markdown`、`--output-markdown`、`--title`、`TOOL_FIELD_MATRIX_*` | 僅由 Markdown 表格抽取欄位資料；輸出為可讀、可追溯的欄位列表 |
 | `tokenizer.py` | 計算文字檔、`--text` 文字，或 stdin 的 token 數，優先用 tiktoken 精算，缺套件時回退估算 | `--input` / `--text` / stdin、`--encoding` | 非 tiktoken 路徑提供估算區間，不會取代正式 token 計價 |
 | `cleanup_work_artifacts.py` | 預覽、隔離並依保存天數清除開發快取與中間產物 | 目前目錄或一個以上 `--root`、選用 `--include-work-dirs`／`--include-build` | 白名單掃描；保留 Git 追蹤內容及巢狀 repository，預設只預覽 |
+| `rewrite-git-history.py` | 重寫git 歷史裡的 author committer | 目前目錄直接執行 `py rewrite-git-history.py` | 會強制改寫整個git的歷史，請謹慎使用，備份存在`.bundle`裡面，每次執行會產生`.bundle`資料夾，會在exclude加入這份檔案與`.bundle` |
 
 ## 工作暫存清理
 
