@@ -8,8 +8,6 @@ import os
 import sys
 from pathlib import Path
 
-from tool_config import ToolConfig
-
 SKIP = {"node_modules", "dist", ".git", ".nx", ".angular", "coverage"}
 TEXT_EXTENSIONS = {".ts", ".html", ".scss", ".css", ".json", ".xml", ".properties"}
 
@@ -36,14 +34,13 @@ def occurrences(root: Path, value: str) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--env-file", type=Path)
-    parser.add_argument("--root", type=Path, help="Cross-tree root; overrides TOOL_GENERATOR_ROOT")
+    parser.add_argument("--root", type=Path, default=Path.cwd(), help="Cross-tree root (default: current directory)")
     parser.add_argument("--identifier", required=True, help="Proposed transaction or feature identifier")
     parser.add_argument("--selector", help="Proposed custom-element selector")
     parser.add_argument("--allow-existing", action="store_true", help="Report collisions without a non-zero exit")
     args = parser.parse_args(argv)
     try:
-        root = ToolConfig(args.env_file).path("TOOL_GENERATOR_ROOT", args.root)
+        root = args.root.expanduser().resolve()
         if not root.is_dir():
             raise ValueError(f"Generator root does not exist: {root}")
         checks = {"identifier": occurrences(root, args.identifier)}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import os
 import re
 import subprocess
@@ -31,10 +32,11 @@ def run_git(
     )
 
 
-def get_repo_root() -> Path | None:
+def get_repo_root(start: Path) -> Path | None:
     result = run_git(
         "rev-parse",
         "--show-toplevel",
+        cwd=start,
         capture=True,
         check=False,
     )
@@ -78,36 +80,12 @@ def get_local_config(repo: Path, key: str) -> str:
     return result.stdout.strip()
 
 
-def escape_gitignore_path(path: str) -> str:
-    """
-    將路徑轉成 .git/info/exclude 可安全使用的 literal pattern
-    """
-    result = []
-
-    for char in path:
-        if char in "\\*?[]#!":
-            result.append("\\")
-        result.append(char)
-
-    return "".join(result)
-
-
-def update_git_exclude(
-    repo: Path,
-    script_path: Path,
-) -> tuple[Path, str]:
+def update_git_exclude(repo: Path) -> Path:
     """
     自動管理 .git/info/exclude 中屬於本 script 的區塊
 
-    script 改名後再次執行時, 舊路徑會被新路徑取代
+    只排除本工具建立的 repository-local .bundle 目錄
     """
-    try:
-        relative_script = script_path.relative_to(repo)
-    except ValueError:
-        raise RuntimeError(
-            "此 Python script 必須位於目前 Git repository 內"
-        )
-
     git_common_dir = get_git_common_dir(repo)
 
     exclude_path = git_common_dir / "info" / "exclude"
@@ -132,14 +110,9 @@ def update_git_exclude(
 
     cleaned = block_pattern.sub("", original).rstrip("\r\n")
 
-    relative_pattern = escape_gitignore_path(
-        relative_script.as_posix()
-    )
-
     managed_block = "\n".join(
         [
             EXCLUDE_BEGIN,
-            f"/{relative_pattern}",
             "/.bundle/",
             EXCLUDE_END,
         ]
@@ -156,34 +129,7 @@ def update_git_exclude(
         newline="\n",
     )
 
-    return exclude_path, relative_script.as_posix()
-
-
-def is_tracked(repo: Path, relative_path: str) -> bool:
-    result = run_git(
-        "ls-files",
-        "--error-unmatch",
-        "--",
-        relative_path,
-        cwd=repo,
-        capture=True,
-        check=False,
-    )
-
-    return result.returncode == 0
-
-
-def is_ignored(repo: Path, relative_path: str) -> bool:
-    result = run_git(
-        "check-ignore",
-        "-q",
-        "--",
-        relative_path,
-        cwd=repo,
-        check=False,
-    )
-
-    return result.returncode == 0
+    return exclude_path
 
 
 def has_uncommitted_changes(repo: Path) -> bool:
@@ -198,34 +144,44 @@ def has_uncommitted_changes(repo: Path) -> bool:
     return bool(result.stdout.strip())
 
 
-def main() -> int:
-    repo = get_repo_root()
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Rewrite every commit author/committer to the selected repository's local Git identity."
+    )
+    parser.add_argument(
+        "--repo",
+        type=Path,
+        default=Path.cwd(),
+        help="Repository or a directory inside it (default: current directory)",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    selected = args.repo.expanduser().resolve()
+    if not selected.is_dir():
+        print(f"錯誤: repository 路徑不存在或不是目錄: {selected}")
+        return 1
+    try:
+        repo = get_repo_root(selected)
+    except (OSError, subprocess.SubprocessError) as error:
+        print(f"錯誤: 無法讀取 Git repository: {error}")
+        return 1
 
     if repo is None:
         print("錯誤: 目前所在位置不是 Git repository")
         return 1
 
-    # __file__ 會反映目前實際執行的檔案名稱
     script_path = Path(__file__).resolve()
-
-    try:
-        script_relative = script_path.relative_to(repo).as_posix()
-    except ValueError:
-        print("錯誤: Python script 必須放在目前 Git repository 內")
-        print(f"Repository : {repo}")
-        print(f"Script     : {script_path}")
-        return 1
 
     # ---------------------------------------------------------
     # 1. 優先設定 local exclude
     # ---------------------------------------------------------
 
     try:
-        exclude_path, script_relative = update_git_exclude(
-            repo,
-            script_path,
-        )
-    except RuntimeError as error:
+        exclude_path = update_git_exclude(repo)
+    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
         print(f"錯誤: {error}")
         return 1
 
@@ -238,25 +194,9 @@ def main() -> int:
 
     print("Local exclude 已設定")
     print(f"Exclude    : {exclude_path}")
-    print(f"Script     : {script_relative}")
+    print(f"Tool       : {script_path}")
     print("Bundle     : .bundle/")
     print()
-
-    # ---------------------------------------------------------
-    # 3. 確認 script 是否已被 Git tracked
-    # ---------------------------------------------------------
-
-    if is_tracked(repo, script_relative):
-        print("警告: 此 Python script 已經被 Git tracked")
-        print(
-            ".git/info/exclude 只會忽略 untracked file, "
-            "不會讓既有 tracked file 變成 untracked"
-        )
-        print()
-    else:
-        if not is_ignored(repo, script_relative):
-            print("錯誤: script exclude 驗證失敗")
-            return 1
 
     # ---------------------------------------------------------
     # 4. 讀取 repository local identity
@@ -385,7 +325,7 @@ export GIT_COMMITTER_EMAIL="$NEW_GIT_EMAIL"
     print(f"Author    : {user_name} <{user_email}>")
     print(f"Committer : {user_name} <{user_email}>")
     print(f"Backup    : {backup_path}")
-    print(f"Script    : {script_relative}")
+    print(f"Tool      : {script_path}")
     print(f"Exclude   : {exclude_path}")
 
     print()

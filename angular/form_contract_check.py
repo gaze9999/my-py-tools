@@ -8,9 +8,6 @@ import re
 import sys
 from pathlib import Path
 
-from tool_config import ToolConfig
-
-
 CONTROL_RE = re.compile(r"(?:^|[,{]\s*)([A-Za-z_$][\w$]*)\s*:\s*(?:new\s+FormControl|this\.[\w$.]+\.control|\[)", re.MULTILINE)
 TEMPLATE_CONTROL_RE = re.compile(r"\bformControlName\s*=\s*(['\"])([^'\"]+)\1")
 
@@ -32,15 +29,13 @@ def controls_in_template(text: str) -> set[str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--env-file", type=Path)
-    parser.add_argument("--root", type=Path, help="Root for contract-relative paths")
-    parser.add_argument("--contract", type=Path, help="JSON contract; overrides TOOL_CONTRACT_FILE")
+    parser.add_argument("--root", type=Path, default=Path.cwd(), help="Root for contract-relative paths (default: current directory)")
+    parser.add_argument("--contract", type=Path, required=True, help="JSON contract file")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     try:
-        config = ToolConfig(args.env_file)
-        root = config.path("TOOL_COMPONENT_ROOT", args.root)
-        contract_path = config.path("TOOL_CONTRACT_FILE", args.contract)
+        root = args.root.expanduser().resolve()
+        contract_path = args.contract.expanduser().resolve()
         contract = read_json(contract_path)
         findings: list[dict[str, str]] = []
         checked = 0

@@ -10,7 +10,7 @@ import sys
 import tempfile
 
 
-from tool_config import ToolConfig
+from shared.config import ToolConfig
 
 TARGETS = ("context", "progress", "history")
 
@@ -142,7 +142,9 @@ def write_guarded(path, before, after, in_place=False):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--env-file", type=Path, help="Project .env; place before subcommand")
+    parser.add_argument("--env-file", type=Path, help="Optional TOOL_* variable file; place before subcommand")
+    parser.add_argument("--target-file", type=Path, required=True, help="Markdown file to inspect or update")
+    parser.add_argument("--namespace", help="Append marker namespace; overrides TOOL_HISTORY_NAMESPACE")
     sub = parser.add_subparsers(dest="command", required=True)
     inspect = sub.add_parser("inspect", help="Emit SHA and headings, or one full section")
     inspect.add_argument("target", choices=TARGETS)
@@ -159,11 +161,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         settings = ToolConfig(args.env_file)
-        path = settings.path(f"TOOL_{args.target.upper()}_FILE")
-        configured = [settings.path(f"TOOL_{target.upper()}_FILE") for target in TARGETS
-                      if settings.values.get(f"TOOL_{target.upper()}_FILE")]
-        if len(configured) != len(set(configured)):
-            raise ValueError("Document target paths must be distinct")
+        namespace = settings.namespace(args.namespace)
+        settings.emit_warnings()
+        path = args.target_file.expanduser().resolve()
         raw, text, bom = read_target(path)
         payload = {"target": args.target, "sha256": sha(raw)}
         if args.command == "inspect":
@@ -185,7 +185,7 @@ def main(argv=None):
                 raise ValueError("Stale SHA-256: re-inspect and merge before writing")
             after = prepare(raw, text, bom, args.content.read_text(encoding="utf-8-sig"),
                             getattr(args, "section", None), getattr(args, "entry_id", None),
-                            settings.namespace())
+                            namespace)
             changed = raw != after
             if args.write and changed:
                 write_guarded(path, raw, after, args.in_place)

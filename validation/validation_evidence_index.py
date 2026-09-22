@@ -7,17 +7,15 @@ import json
 import sys
 from pathlib import Path
 
-from tool_config import ToolConfig
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--env-file", type=Path)
-    parser.add_argument("--root", type=Path, help="Run directory parent; overrides TOOL_VALIDATION_ROOT")
+    parser.add_argument("--root", type=Path, default=Path.cwd(), help="Run directory parent (default: current directory)")
     parser.add_argument("--limit", type=int, default=20)
     args = parser.parse_args(argv)
     try:
-        root = ToolConfig(args.env_file).path("TOOL_VALIDATION_ROOT", args.root)
+        root = args.root.expanduser().resolve()
+        if not root.is_dir():
+            raise ValueError(f"validation root does not exist: {root}")
         if args.limit < 1:
             raise ValueError("--limit must be positive")
         runs = []

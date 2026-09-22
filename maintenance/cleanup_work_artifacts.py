@@ -2,11 +2,11 @@
 """Preview and quarantine disposable development caches and work artifacts.
 
 Examples:
-  python cleanup_work_artifacts.py
-  python cleanup_work_artifacts.py --root
-  python cleanup_work_artifacts.py --root /path/to/project
-  python cleanup_work_artifacts.py --root /path/to/project --include-work-dirs --apply
-  python cleanup_work_artifacts.py --purge-quarantine --older-than-days 7
+  python -m maintenance.cleanup_work_artifacts
+  python -m maintenance.cleanup_work_artifacts --root
+  python -m maintenance.cleanup_work_artifacts --root /path/to/project
+  python -m maintenance.cleanup_work_artifacts --root /path/to/project --include-work-dirs --apply
+  python -m maintenance.cleanup_work_artifacts --purge-quarantine --older-than-days 7
 """
 from __future__ import annotations
 

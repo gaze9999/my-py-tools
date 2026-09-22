@@ -8,7 +8,7 @@ import math
 import sys
 from pathlib import Path
 
-from tool_config import ToolConfig
+from shared.config import ToolConfig
 
 
 def read_text(path: Path) -> str:
@@ -38,15 +38,6 @@ def tokenize_with_tiktoken(text: str, encoding_name: str) -> int:
     return len(encoding.encode(text))
 
 
-def load_env_value(cfg: ToolConfig | None, key: str, default: str) -> str:
-    if cfg is None:
-        return default
-    try:
-        return cfg.value(key)
-    except ValueError:
-        return default
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, help="Input text file")
@@ -60,13 +51,11 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
-    cfg = None
-    if args.env_file is not None:
-        cfg = ToolConfig(args.env_file)
-
-    encoding = load_env_value(cfg, "TOOL_TOKENIZER_ENCODING", "cl100k_base")
-    ascii_ratio = float(load_env_value(cfg, "TOOL_TOKENIZER_ASCII_CHARS_PER_TOKEN", "4"))
-    non_ascii_ratio = float(load_env_value(cfg, "TOOL_TOKENIZER_NONASCII_CHARS_PER_TOKEN", "2"))
+    cfg = ToolConfig(args.env_file)
+    encoding = cfg.value("TOOL_TOKENIZER_ENCODING", "cl100k_base")
+    ascii_ratio = cfg.positive_float("TOOL_TOKENIZER_ASCII_CHARS_PER_TOKEN", 4)
+    non_ascii_ratio = cfg.positive_float("TOOL_TOKENIZER_NONASCII_CHARS_PER_TOKEN", 2)
+    cfg.emit_warnings()
 
     if args.encoding is not None:
         encoding = args.encoding
@@ -74,6 +63,10 @@ def main(argv: list[str] | None = None) -> int:
         ascii_ratio = args.ascii_ratio
     if args.non_ascii_ratio is not None:
         non_ascii_ratio = args.non_ascii_ratio
+
+    if any(not math.isfinite(value) or value <= 0 for value in (ascii_ratio, non_ascii_ratio)):
+        print("error: fallback character ratios must be finite and greater than 0", file=sys.stderr)
+        return 2
 
     if args.input is not None and args.text is not None:
         print("error: --input and --text cannot be used together", file=sys.stderr)
@@ -85,7 +78,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: input file not found: {args.input}", file=sys.stderr)
             return 2
         source = str(args.input)
-        text = read_text(args.input)
+        try:
+            text = read_text(args.input)
+        except (OSError, UnicodeError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
     elif args.text is not None:
         source = "inline"
         text = args.text

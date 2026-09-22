@@ -14,7 +14,6 @@ from typing import Iterable, Sequence
 
 
 SKIP_PARTS = {"node_modules", "dist", ".angular", ".nx", "coverage"}
-from tool_config import ToolConfig
 COMPONENT_CLASS_RE = re.compile(r"export\s+class\s+(\w+Component)\b")
 SELECTOR_RE = re.compile(r"\bselector\s*:\s*(['\"])(.*?)\1")
 TEMPLATE_URL_RE = re.compile(r"\btemplateUrl\s*:\s*(['\"])(.*?)\1")
@@ -60,15 +59,14 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         ),
         epilog=(
             "examples:\n"
-            "  python component_inventory.py customer --project transaction-ui\n"
-            "  python component_inventory.py transaction-ui\n"
-            "  python component_inventory.py --changed --json"
+            "  python -m angular.component_inventory customer --project transaction-ui\n"
+            "  python -m angular.component_inventory transaction-ui\n"
+            "  python -m angular.component_inventory --changed --json"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("query", nargs="*", help="Terms matched against path, selector, class, or description")
-    parser.add_argument("--env-file", type=Path, help="Project .env; default: beside this script")
-    parser.add_argument("--root", type=Path, help="Nx workspace root; overrides TOOL_WORKSPACE_ROOT")
+    parser.add_argument("--root", type=Path, default=Path.cwd(), help="Nx workspace root (default: current directory)")
     parser.add_argument("--project", help="Limit results to one Nx project name")
     parser.add_argument("--changed", action="store_true", help="Show only components with changed companion files")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
@@ -278,8 +276,8 @@ def print_text(components: Sequence[Component], total: int) -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     try:
-        root = ToolConfig(args.env_file).path("TOOL_COMPONENT_ROOT", args.root)
-    except (OSError, UnicodeError, ValueError) as error:
+        root = args.root.expanduser().resolve()
+    except (OSError, RuntimeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     if not (root / "nx.json").is_file():

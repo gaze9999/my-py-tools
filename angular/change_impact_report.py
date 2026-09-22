@@ -8,8 +8,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tool_config import ToolConfig
-
 MARKERS = ("selector:", "@Input", "@Output", "CustomEvent", "createCustomElement", "component-mapping")
 
 
@@ -24,11 +22,10 @@ def changed(root: Path) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--env-file", type=Path)
-    parser.add_argument("--root", type=Path, help="Repository root; overrides TOOL_GENERATOR_ROOT")
+    parser.add_argument("--root", type=Path, default=Path.cwd(), help="Repository root (default: current directory)")
     args = parser.parse_args(argv)
     try:
-        root = ToolConfig(args.env_file).path("TOOL_GENERATOR_ROOT", args.root)
+        root = args.root.expanduser().resolve()
         rows = []
         for name in changed(root):
             path = root / name

@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Regenerate PDF/XLSX audit Markdown files.
+"""Extract one or more source documents into searchable Markdown audits.
 
-The generated Markdown is an orientation/search aid. The original PDF and
-XLSX remain the authoritative sources when extraction is incomplete or the
-derived text conflicts with the source layout.
+The generated Markdown is an orientation/search aid. Original source files
+remain authoritative when extraction is incomplete or derived text conflicts
+with the source layout.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime as dt
 import difflib
 import hashlib
@@ -20,15 +21,11 @@ import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Iterable, Sequence
+from typing import Sequence
 from xml.etree import ElementTree
 
 
-from tool_config import ToolConfig
-
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_OUTPUT_DIR = (SCRIPT_DIR / ".." / "outputs").resolve()
+SUPPORTED_EXTENSIONS = (".pdf", ".xlsx", ".docx", ".pptx", ".csv", ".txt")
 
 
 @dataclass(frozen=True)
@@ -37,16 +34,6 @@ class GeneratedAudit:
     output: Path
     content: str
     summary: str
-
-
-def resolve_output_path(settings: ToolConfig, kind: str, source: Path, override: Path | None) -> Path:
-    key = f"TOOL_{kind.upper()}_OUTPUT"
-    if override is not None:
-        return Path(override).resolve()
-    try:
-        return settings.path(key)
-    except ValueError:
-        return (DEFAULT_OUTPUT_DIR / f"{source.stem}.md").resolve()
 
 
 def load_diagram_overrides(path: Path | None, source: Path) -> dict[int, dict[str, str]]:
@@ -59,7 +46,7 @@ def load_diagram_overrides(path: Path | None, source: Path) -> dict[int, dict[st
     if not isinstance(data, dict) or not isinstance(data.get("diagrams"), list):
         return {}
     expected_hash = data.get("source_sha256")
-    if expected_hash and expected_hash.lower() != sha256(source):
+    if not isinstance(expected_hash, str) or expected_hash.lower() != sha256(source):
         return {}
     result: dict[int, dict[str, str]] = {}
     for item in data["diagrams"]:
@@ -390,6 +377,235 @@ def build_xlsx_audit(source: Path, output: Path, extracted_on: dt.date) -> Gener
     )
 
 
+def _numbered_table(rows: Sequence[Sequence[object]]) -> str:
+    rendered = [
+        [_markdown_cell(normalize_text(str(value))) if value is not None else "" for value in row]
+        for row in rows
+    ]
+    width = max((len(row) for row in rendered), default=0)
+    if not width:
+        return "[No populated cells]"
+    columns = [_excel_column_name(index) for index in range(1, width + 1)]
+    lines = [
+        "| Row | " + " | ".join(columns) + " |",
+        "| --- | " + " | ".join("---" for _ in columns) + " |",
+    ]
+    for number, row in enumerate(rendered, start=1):
+        lines.append(
+            "| " + str(number) + " | " + " | ".join(row + [""] * (width - len(row))) + " |"
+        )
+    return "\n".join(lines)
+
+
+def build_docx_audit(source: Path, output: Path, extracted_on: dt.date) -> GeneratedAudit:
+    try:
+        from docx import Document
+        from docx.table import Table
+        from docx.text.paragraph import Paragraph
+    except ImportError as exc:
+        raise RuntimeError(
+            "Missing dependency 'python-docx'. Install dependencies from requirements.txt"
+        ) from exc
+
+    require_file(source, "DOCX source")
+    ensure_distinct(source, output)
+    try:
+        document = Document(source)
+    except Exception as exc:
+        raise ValueError(f"Unable to open DOCX source: {type(exc).__name__}: {exc}") from exc
+
+    sections: list[str] = []
+    paragraph_count = 0
+    table_count = 0
+    for child in document.element.body.iterchildren():
+        local_name = child.tag.rsplit("}", 1)[-1]
+        if local_name == "p":
+            paragraph = Paragraph(child, document)
+            text = normalize_text(paragraph.text)
+            if not text:
+                continue
+            paragraph_count += 1
+            style_name = paragraph.style.name if paragraph.style is not None else ""
+            heading = re.fullmatch(r"Heading\s+([1-9])", style_name, re.IGNORECASE)
+            if heading:
+                level = min(6, int(heading.group(1)) + 2)
+                sections.append(f"{'#' * level} {text}")
+            else:
+                sections.append(text)
+        elif local_name == "tbl":
+            table = Table(child, document)
+            rows = [[cell.text for cell in row.cells] for row in table.rows]
+            table_count += 1
+            sections.append(f"### Table {table_count}\n\n{_numbered_table(rows)}")
+
+    inline_shapes = len(document.inline_shapes)
+    header = f"""# Extracted/derived audit text from the original source: {source.name}
+
+> Source precedence: this Markdown is an extraction for audit orientation. If content is missing or conflicts with the original layout, the original DOCX prevails.
+
+## Extraction metadata
+- Source path: {source.resolve()}
+- Source SHA-256: {sha256(source)}
+- Source type: docx
+- Paragraph count: {paragraph_count}
+- Table count: {table_count}
+- Inline shape count: {inline_shapes}
+- Extraction method: python-docx document-body paragraphs and tables in source order
+- OCR fallback: not performed; text in images, text boxes, headers, footers and unsupported drawing objects may be absent
+- Extracted on: {extracted_on.isoformat()}
+- Note: formatting, tracked changes, comments and page layout require checking the original DOCX
+
+## Extracted text
+"""
+    body = "\n\n".join(sections) if sections else "[No extractable body text or tables]"
+    return GeneratedAudit(
+        source=source,
+        output=output,
+        content=header.rstrip() + "\n\n" + body + "\n",
+        summary=f"DOCX: {paragraph_count} paragraphs, {table_count} tables, {inline_shapes} inline shapes",
+    )
+
+
+def build_pptx_audit(source: Path, output: Path, extracted_on: dt.date) -> GeneratedAudit:
+    try:
+        from pptx import Presentation
+    except ImportError as exc:
+        raise RuntimeError(
+            "Missing dependency 'python-pptx'. Install dependencies from requirements.txt"
+        ) from exc
+
+    require_file(source, "PPTX source")
+    ensure_distinct(source, output)
+    try:
+        presentation = Presentation(source)
+    except Exception as exc:
+        raise ValueError(f"Unable to open PPTX source: {type(exc).__name__}: {exc}") from exc
+
+    slide_sections: list[str] = []
+    text_shape_count = 0
+    table_count = 0
+    unsupported_shape_count = 0
+    for slide_number, slide in enumerate(presentation.slides, start=1):
+        blocks: list[str] = []
+        for shape in slide.shapes:
+            if getattr(shape, "has_table", False):
+                rows = [[cell.text for cell in row.cells] for row in shape.table.rows]
+                table_count += 1
+                blocks.append(f"### Table {table_count}\n\n{_numbered_table(rows)}")
+            elif getattr(shape, "has_text_frame", False):
+                paragraphs = [normalize_text(item.text) for item in shape.text_frame.paragraphs]
+                text = "\n".join(item for item in paragraphs if item)
+                if text:
+                    text_shape_count += 1
+                    blocks.append(_fenced_text(text))
+            else:
+                unsupported_shape_count += 1
+        body = "\n\n".join(blocks) if blocks else "[No extractable text or tables on this slide]"
+        slide_sections.append(f"## Slide {slide_number}\n\n{body}")
+
+    header = f"""# Extracted/derived audit text from the original source: {source.name}
+
+> Source precedence: this Markdown is an extraction for audit orientation. If content is missing or conflicts with the original layout, the original PPTX prevails.
+
+## Extraction metadata
+- Source path: {source.resolve()}
+- Source SHA-256: {sha256(source)}
+- Source type: pptx
+- Slide count: {len(presentation.slides)}
+- Text shape count: {text_shape_count}
+- Table count: {table_count}
+- Unsupported/non-text shape count: {unsupported_shape_count}
+- Extraction method: python-pptx slide text frames and tables
+- OCR fallback: not performed; text in images, charts, SmartArt, media and unsupported objects may be absent
+- Extracted on: {extracted_on.isoformat()}
+- Note: animations, speaker notes, spatial relationships and visual formatting require checking the original PPTX
+"""
+    return GeneratedAudit(
+        source=source,
+        output=output,
+        content=header.rstrip() + "\n\n" + "\n\n".join(slide_sections) + "\n",
+        summary=(
+            f"PPTX: {len(presentation.slides)} slides, {text_shape_count} text shapes, "
+            f"{table_count} tables"
+        ),
+    )
+
+
+def build_csv_audit(
+    source: Path,
+    output: Path,
+    extracted_on: dt.date,
+    encoding: str,
+) -> GeneratedAudit:
+    require_file(source, "CSV source")
+    ensure_distinct(source, output)
+    with source.open("r", encoding=encoding, newline="") as stream:
+        sample = stream.read(8192)
+        stream.seek(0)
+        try:
+            dialect = csv.Sniffer().sniff(sample)
+        except csv.Error:
+            dialect = csv.excel
+        rows = list(csv.reader(stream, dialect))
+
+    header = f"""# Extracted/derived audit text from the original source: {source.name}
+
+> Source precedence: this Markdown is a tabular rendering. The original CSV prevails.
+
+## Extraction metadata
+- Source path: {source.resolve()}
+- Source SHA-256: {sha256(source)}
+- Source type: csv
+- Row count: {len(rows)}
+- Encoding: {encoding}
+- Detected delimiter: {dialect.delimiter!r}
+- Extraction method: Python csv parser with source row numbers retained
+- Extracted on: {extracted_on.isoformat()}
+
+## Extracted table
+"""
+    return GeneratedAudit(
+        source=source,
+        output=output,
+        content=header.rstrip() + "\n\n" + _numbered_table(rows) + "\n",
+        summary=f"CSV: {len(rows)} rows",
+    )
+
+
+def build_text_audit(
+    source: Path,
+    output: Path,
+    extracted_on: dt.date,
+    encoding: str,
+) -> GeneratedAudit:
+    require_file(source, "text source")
+    ensure_distinct(source, output)
+    text = normalize_line_endings(source.read_text(encoding=encoding)).rstrip()
+    line_count = len(text.splitlines()) if text else 0
+    header = f"""# Extracted/derived audit text from the original source: {source.name}
+
+> Source precedence: this Markdown wraps the original plain text. The original TXT prevails.
+
+## Extraction metadata
+- Source path: {source.resolve()}
+- Source SHA-256: {sha256(source)}
+- Source type: txt
+- Line count: {line_count}
+- Encoding: {encoding}
+- Extraction method: plain-text read with normalized line endings
+- Extracted on: {extracted_on.isoformat()}
+
+## Extracted text
+"""
+    body = _fenced_text(text) if text else "[Empty text file]"
+    return GeneratedAudit(
+        source=source,
+        output=output,
+        content=header.rstrip() + "\n\n" + body + "\n",
+        summary=f"TXT: {line_count} lines, {len(text)} characters",
+    )
+
+
 def atomic_write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, temporary_name = tempfile.mkstemp(
@@ -426,30 +642,111 @@ def compare_existing(audit: GeneratedAudit) -> bool:
     return False
 
 
+def _demote_headings(markdown: str) -> str:
+    lines: list[str] = []
+    fence: tuple[str, int] | None = None
+    for line in markdown.splitlines():
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})", line)
+        if marker:
+            run = marker.group(1)
+            if fence is None:
+                fence = (run[0], len(run))
+            elif run[0] == fence[0] and len(run) >= fence[1]:
+                fence = None
+        elif fence is None:
+            heading = re.match(r"^(#{1,6})(\s+.*)$", line)
+            if heading:
+                line = "#" * min(6, len(heading.group(1)) + 1) + heading.group(2)
+        lines.append(line)
+    return "\n".join(lines).rstrip()
+
+
+def combine_audits(
+    audits: Sequence[GeneratedAudit],
+    output: Path,
+    extracted_on: dt.date,
+) -> GeneratedAudit:
+    for audit in audits:
+        ensure_distinct(audit.source, output)
+    source_lines = "\n".join(
+        f"- `{audit.source}` ({audit.source.suffix.casefold().lstrip('.')}, SHA-256 `{sha256(audit.source)}`)"
+        for audit in audits
+    )
+    sections = [_demote_headings(audit.content) for audit in audits]
+    combined_sections = "\n\n".join(sections)
+    content = f"""# Combined source audit
+
+> Source precedence: this combined Markdown is an extraction for search and audit orientation. Each original source remains authoritative.
+
+## Combined extraction metadata
+- Source count: {len(audits)}
+- Extracted on: {extracted_on.isoformat()}
+
+## Sources
+{source_lines}
+
+{combined_sections}
+"""
+    return GeneratedAudit(
+        source=audits[0].source,
+        output=output,
+        content=content,
+        summary=f"Combined: {len(audits)} source files",
+    )
+
+
+def build_audit(
+    source: Path,
+    output: Path,
+    extracted_on: dt.date,
+    *,
+    diagram_file: Path | None = None,
+    text_encoding: str = "utf-8-sig",
+) -> GeneratedAudit:
+    extension = source.suffix.casefold()
+    if extension == ".pdf":
+        return build_pdf_audit(source, output, extracted_on, diagram_file)
+    if extension == ".xlsx":
+        return build_xlsx_audit(source, output, extracted_on)
+    if extension == ".docx":
+        return build_docx_audit(source, output, extracted_on)
+    if extension == ".pptx":
+        return build_pptx_audit(source, output, extracted_on)
+    if extension == ".csv":
+        return build_csv_audit(source, output, extracted_on, text_encoding)
+    if extension == ".txt":
+        return build_text_audit(source, output, extracted_on, text_encoding)
+    supported = ", ".join(SUPPORTED_EXTENSIONS)
+    raise ValueError(f"Unsupported source type {source.suffix or '(none)'}; choose one of: {supported}")
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Regenerate PDF/XLSX audit Markdown in a searchable format."
+        description="Extract one or more source documents into separate or combined Markdown audits."
     )
     parser.add_argument(
-        "target",
-        nargs="?",
-        choices=("all", "pdf", "xlsx"),
-        default="all",
-        help="source(s) to process (default: all)",
+        "sources",
+        nargs="+",
+        type=Path,
+        help="Source file(s): PDF, XLSX, DOCX, PPTX, CSV or TXT",
     )
-    parser.add_argument("--env-file", type=Path, help="Project .env; default: beside this script")
-    parser.add_argument("--pdf", type=Path, help="source PDF path; overrides TOOL_PDF_SOURCE")
-    parser.add_argument("--xlsx", type=Path, help="source XLSX path; overrides TOOL_XLSX_SOURCE")
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument("--output", type=Path, help="Output file for exactly one source")
+    output.add_argument("--output-dir", type=Path, help="Directory for separate source-name.md files")
+    output.add_argument("--combine-output", type=Path, help="Combine every source into one Markdown file")
     parser.add_argument(
-        "--pdf-output", type=Path, help="PDF audit Markdown path"
+        "--diagram-file",
+        type=Path,
+        help="Optional source-hash-verified Mermaid override JSON for one PDF source",
     )
     parser.add_argument(
-        "--xlsx-output", type=Path, help="XLSX audit Markdown path"
+        "--text-encoding",
+        default="utf-8-sig",
+        help="CSV/TXT input encoding (default: utf-8-sig)",
     )
-    parser.add_argument("--diagram-file", type=Path, help="Optional source-hash-verified Mermaid override JSON")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
-        "--check", action="store_true", help="compare generated content with existing outputs"
+        "--check", action="store_true", help="compare generated content with existing output(s)"
     )
     mode.add_argument(
         "--dry-run", action="store_true", help="extract and report counts without writing files"
@@ -464,26 +761,52 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def selected_audits(args: argparse.Namespace) -> Iterable[GeneratedAudit]:
-    if args.target in ("all", "pdf"):
-        yield build_pdf_audit(args.pdf, args.pdf_output, args.date, args.diagram_file)
-    if args.target in ("all", "xlsx"):
-        yield build_xlsx_audit(args.xlsx, args.xlsx_output, args.date)
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        settings = ToolConfig(args.env_file)
-        for kind in ("pdf", "xlsx"):
-            if args.target in ("all", kind):
-                source_path = settings.path(f"TOOL_{kind.upper()}_SOURCE", getattr(args, kind))
-                setattr(args, kind, source_path)
-                output_key = f"{kind}_output"
-                setattr(args, output_key, resolve_output_path(settings, kind, source_path, getattr(args, output_key)))
-        if args.target in ("all", "pdf") and args.diagram_file is None and settings.values.get("TOOL_DIAGRAM_FILE"):
-            args.diagram_file = settings.path("TOOL_DIAGRAM_FILE")
-        audits = list(selected_audits(args))
+        sources = [source.expanduser().resolve() for source in args.sources]
+        if len(set(sources)) != len(sources):
+            raise ValueError("Duplicate source paths are not allowed")
+        if args.output and len(sources) != 1:
+            raise ValueError("--output requires exactly one source")
+        if args.diagram_file and (len(sources) != 1 or sources[0].suffix.casefold() != ".pdf"):
+            raise ValueError("--diagram-file requires exactly one PDF source")
+
+        output_dir = args.output_dir.expanduser().resolve() if args.output_dir else None
+        combined_output = args.combine_output.expanduser().resolve() if args.combine_output else None
+        if combined_output:
+            output_paths = [combined_output] * len(sources)
+        else:
+            output_paths = []
+            for source in sources:
+                if args.output:
+                    output_path = args.output.expanduser().resolve()
+                elif output_dir:
+                    output_path = output_dir / f"{source.stem}.md"
+                else:
+                    output_path = source.with_suffix(".md")
+                output_paths.append(output_path)
+            if len(set(output_paths)) != len(output_paths):
+                raise ValueError(
+                    "Multiple sources resolve to the same output path; use --combine-output, "
+                    "rename a source or run them separately"
+                )
+        if any(path.suffix.casefold() != ".md" for path in set(output_paths)):
+            raise ValueError("Every output file must use the .md extension")
+
+        diagram_file = args.diagram_file.expanduser().resolve() if args.diagram_file else None
+        audits = [
+            build_audit(
+                source,
+                output,
+                args.date,
+                diagram_file=diagram_file,
+                text_encoding=args.text_encoding,
+            )
+            for source, output in zip(sources, output_paths)
+        ]
+        if combined_output:
+            audits = [combine_audits(audits, combined_output, args.date)]
         if args.check:
             comparisons = [compare_existing(audit) for audit in audits]
             return 0 if all(comparisons) else 1
@@ -493,8 +816,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(f"WROTE: {audit.output}")
             print(audit.summary)
         return 0
-    except (OSError, UnicodeError, ValueError, RuntimeError, zipfile.BadZipFile) as exc:
+    except (OSError, UnicodeError, LookupError, ValueError, RuntimeError, zipfile.BadZipFile) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"ERROR: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
 
 
