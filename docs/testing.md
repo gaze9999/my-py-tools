@@ -27,7 +27,7 @@ python -m compileall -q angular audit maintenance markdown shared text validatio
 PDF extractor 需用實際 PDF 做 `--dry-run`, 因為 text layer 與 table reconstruction 結果依來源結構而異
 
 ```powershell
-python -m audit.source_audit_extract C:\path\spec.pdf --dry-run --date 2026-09-22
+python -m audit.source_audit_extract C:\path\spec.pdf --dry-run --extracted-at 2026-09-22T14:30:15
 ```
 
 測試通過只代表這些明確案例, 不代表未提供的文件版面, OCR, Angular dynamic metadata 或 remote Git operation 已驗證

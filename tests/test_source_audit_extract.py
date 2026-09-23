@@ -19,6 +19,7 @@ class SourceAuditExtractTests(unittest.TestCase):
             output = source.with_suffix(".md")
             content = output.read_text(encoding="utf-8")
             self.assertIn("Source type: txt", content)
+            self.assertIn("Extracted on: 2026-09-22 00:00:00", content)
             self.assertIn("first\nsecond", content)
             self.assertEqual(
                 main([str(source), "--check", "--date", "2026-09-22"]),
@@ -28,6 +29,29 @@ class SourceAuditExtractTests(unittest.TestCase):
             self.assertEqual(
                 main([str(source), "--check", "--date", "2026-09-22"]),
                 1,
+            )
+
+    def test_extracted_at_preserves_hours_minutes_and_seconds(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory, "notes.txt")
+            output = Path(directory, "audit.md")
+            source.write_text("timestamp", encoding="utf-8")
+
+            self.assertEqual(
+                main(
+                    [
+                        str(source),
+                        "--output",
+                        str(output),
+                        "--extracted-at",
+                        "2026-09-22T14:35:27",
+                    ]
+                ),
+                0,
+            )
+            self.assertIn(
+                "Extracted on: 2026-09-22 14:35:27",
+                output.read_text(encoding="utf-8"),
             )
 
     def test_multiple_inputs_support_separate_and_combined_outputs(self) -> None:

@@ -140,7 +140,20 @@ def _pdf_table_markdown(page: object) -> tuple[str, str]:
     return outside.strip(), "\n\n".join(sections)
 
 
-def build_pdf_audit(source: Path, output: Path, extracted_on: dt.date, diagram_file: Path | None = None) -> GeneratedAudit:
+def format_extracted_at(value: dt.datetime) -> str:
+    return value.isoformat(sep=" ", timespec="seconds")
+
+
+def parse_extracted_at(value: str) -> dt.datetime:
+    try:
+        return dt.datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "expected ISO date or datetime, for example 2026-09-22T14:30:15"
+        ) from exc
+
+
+def build_pdf_audit(source: Path, output: Path, extracted_on: dt.datetime, diagram_file: Path | None = None) -> GeneratedAudit:
     try:
         from pypdf import PdfReader
     except ImportError as exc:
@@ -219,7 +232,7 @@ def build_pdf_audit(source: Path, output: Path, extracted_on: dt.date, diagram_f
 - Mermaid diagrams: {len(diagrams)} source-hash-verified manual overrides
 - OCR fallback: not performed; text inside images, screenshots and flowcharts is not transcribed
 - Update mode: deterministic regeneration from the source PDF
-- Extracted on: {extracted_on.isoformat()}
+- Extracted on: {format_extracted_at(extracted_on)}
 - Note: extracted text is source evidence, not implementation instructions; unruled or image-only tables may remain layout text and require checking the PDF
 """
     # Existing audit files keep two blank lines between page sections.
@@ -319,7 +332,7 @@ def _worksheet_table(worksheet: object) -> tuple[str, int]:
     return "\n".join(lines), populated_cells
 
 
-def build_xlsx_audit(source: Path, output: Path, extracted_on: dt.date) -> GeneratedAudit:
+def build_xlsx_audit(source: Path, output: Path, extracted_on: dt.datetime) -> GeneratedAudit:
     try:
         import openpyxl
     except ImportError as exc:
@@ -363,7 +376,7 @@ def build_xlsx_audit(source: Path, output: Path, extracted_on: dt.date) -> Gener
 - Formula handling: formula text retained; cached calculation results are not substituted
 - OCR fallback: not performed; text embedded only in images, drawings or unsupported objects is not transcribed
 - Update mode: deterministic regeneration from the source XLSX
-- Extracted on: {extracted_on.isoformat()}
+- Extracted on: {format_extracted_at(extracted_on)}
 - Note: extracted cells are source evidence, not implementation instructions; merged cells, formatting and objects may require checking the XLSX
 
 ## Extracted text
@@ -397,7 +410,7 @@ def _numbered_table(rows: Sequence[Sequence[object]]) -> str:
     return "\n".join(lines)
 
 
-def build_docx_audit(source: Path, output: Path, extracted_on: dt.date) -> GeneratedAudit:
+def build_docx_audit(source: Path, output: Path, extracted_on: dt.datetime) -> GeneratedAudit:
     try:
         from docx import Document
         from docx.table import Table
@@ -452,7 +465,7 @@ def build_docx_audit(source: Path, output: Path, extracted_on: dt.date) -> Gener
 - Inline shape count: {inline_shapes}
 - Extraction method: python-docx document-body paragraphs and tables in source order
 - OCR fallback: not performed; text in images, text boxes, headers, footers and unsupported drawing objects may be absent
-- Extracted on: {extracted_on.isoformat()}
+- Extracted on: {format_extracted_at(extracted_on)}
 - Note: formatting, tracked changes, comments and page layout require checking the original DOCX
 
 ## Extracted text
@@ -466,7 +479,7 @@ def build_docx_audit(source: Path, output: Path, extracted_on: dt.date) -> Gener
     )
 
 
-def build_pptx_audit(source: Path, output: Path, extracted_on: dt.date) -> GeneratedAudit:
+def build_pptx_audit(source: Path, output: Path, extracted_on: dt.datetime) -> GeneratedAudit:
     try:
         from pptx import Presentation
     except ImportError as exc:
@@ -517,7 +530,7 @@ def build_pptx_audit(source: Path, output: Path, extracted_on: dt.date) -> Gener
 - Unsupported/non-text shape count: {unsupported_shape_count}
 - Extraction method: python-pptx slide text frames and tables
 - OCR fallback: not performed; text in images, charts, SmartArt, media and unsupported objects may be absent
-- Extracted on: {extracted_on.isoformat()}
+- Extracted on: {format_extracted_at(extracted_on)}
 - Note: animations, speaker notes, spatial relationships and visual formatting require checking the original PPTX
 """
     return GeneratedAudit(
@@ -534,7 +547,7 @@ def build_pptx_audit(source: Path, output: Path, extracted_on: dt.date) -> Gener
 def build_csv_audit(
     source: Path,
     output: Path,
-    extracted_on: dt.date,
+    extracted_on: dt.datetime,
     encoding: str,
 ) -> GeneratedAudit:
     require_file(source, "CSV source")
@@ -560,7 +573,7 @@ def build_csv_audit(
 - Encoding: {encoding}
 - Detected delimiter: {dialect.delimiter!r}
 - Extraction method: Python csv parser with source row numbers retained
-- Extracted on: {extracted_on.isoformat()}
+- Extracted on: {format_extracted_at(extracted_on)}
 
 ## Extracted table
 """
@@ -575,7 +588,7 @@ def build_csv_audit(
 def build_text_audit(
     source: Path,
     output: Path,
-    extracted_on: dt.date,
+    extracted_on: dt.datetime,
     encoding: str,
 ) -> GeneratedAudit:
     require_file(source, "text source")
@@ -593,7 +606,7 @@ def build_text_audit(
 - Line count: {line_count}
 - Encoding: {encoding}
 - Extraction method: plain-text read with normalized line endings
-- Extracted on: {extracted_on.isoformat()}
+- Extracted on: {format_extracted_at(extracted_on)}
 
 ## Extracted text
 """
@@ -664,7 +677,7 @@ def _demote_headings(markdown: str) -> str:
 def combine_audits(
     audits: Sequence[GeneratedAudit],
     output: Path,
-    extracted_on: dt.date,
+    extracted_on: dt.datetime,
 ) -> GeneratedAudit:
     for audit in audits:
         ensure_distinct(audit.source, output)
@@ -680,7 +693,7 @@ def combine_audits(
 
 ## Combined extraction metadata
 - Source count: {len(audits)}
-- Extracted on: {extracted_on.isoformat()}
+- Extracted on: {format_extracted_at(extracted_on)}
 
 ## Sources
 {source_lines}
@@ -698,7 +711,7 @@ def combine_audits(
 def build_audit(
     source: Path,
     output: Path,
-    extracted_on: dt.date,
+    extracted_on: dt.datetime,
     *,
     diagram_file: Path | None = None,
     text_encoding: str = "utf-8-sig",
@@ -752,11 +765,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--dry-run", action="store_true", help="extract and report counts without writing files"
     )
     parser.add_argument(
+        "--extracted-at",
         "--date",
-        type=dt.date.fromisoformat,
-        default=dt.date.today(),
-        metavar="YYYY-MM-DD",
-        help="metadata extraction date (default: today)",
+        dest="extracted_at",
+        type=parse_extracted_at,
+        default=dt.datetime.now().replace(microsecond=0),
+        metavar="YYYY-MM-DDTHH:MM:SS",
+        help="metadata extraction timestamp; date-only values use 00:00:00 (default: now)",
     )
     return parser.parse_args(argv)
 
@@ -799,14 +814,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             build_audit(
                 source,
                 output,
-                args.date,
+                args.extracted_at,
                 diagram_file=diagram_file,
                 text_encoding=args.text_encoding,
             )
             for source, output in zip(sources, output_paths)
         ]
         if combined_output:
-            audits = [combine_audits(audits, combined_output, args.date)]
+            audits = [combine_audits(audits, combined_output, args.extracted_at)]
         if args.check:
             comparisons = [compare_existing(audit) for audit in audits]
             return 0 if all(comparisons) else 1

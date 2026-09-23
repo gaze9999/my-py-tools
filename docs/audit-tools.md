@@ -51,7 +51,8 @@ python -m audit.source_audit_extract spec.pdf api.xlsx notes.txt --combine-outpu
 
 - `--dry-run` 完成實際抽取並顯示統計, 不寫檔
 - `--check` 重新抽取後逐位元組比對既有 Markdown, 相同回傳 `0`, 缺少或 stale 回傳 `1`
-- `--date YYYY-MM-DD` 固定 metadata 日期, 便於 deterministic check
+- `--extracted-at YYYY-MM-DDTHH:MM:SS` 固定 metadata 時間, 輸出格式為 `YYYY-MM-DD HH:MM:SS`, 便於 deterministic check
+- 舊的 `--date` 保留為相容 alias, 只提供日期時會使用 `00:00:00`
 - `--text-encoding` 指定 CSV/TXT encoding
 - `--diagram-file` 只允許單一 PDF 來源, JSON 缺失、無法讀取、格式錯誤、source hash 不符或 entry 無效時 fail-open 為不套用 override
 
