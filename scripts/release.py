@@ -48,12 +48,12 @@ def validate_source() -> None:
         raise ValueError("Python syntax validation failed: " + "; ".join(errors))
 
 
-def verify(tag: str) -> list[Path]:
+def verify(tag: str, output_root: Path | None = None) -> list[Path]:
     version = prepare_release.normalize_version(tag)
     tag = "v" + version
     if prepare_release.normalize_version((REPO / "VERSION").read_text(encoding="utf-8")) != version:
         raise ValueError("VERSION does not match the release tag")
-    folder = REPO / "dist" / tag
+    folder = (output_root or REPO / "dist").expanduser().resolve() / tag
     manifest = json.loads((folder / prepare_release.MANIFEST).read_text(encoding="utf-8"))
     if manifest.get("producer") != prepare_release.PRODUCER or manifest.get("tag") != tag or manifest.get("repository_version") != version:
         raise ValueError("Release manifest has the wrong producer or version")
@@ -89,7 +89,7 @@ def verify(tag: str) -> list[Path]:
     return sorted(paths)
 
 
-def publish(tag: str) -> None:
+def publish(tag: str, output_root: Path | None = None) -> None:
     version = prepare_release.normalize_version(tag)
     tag = "v" + version
     if run("git", "status", "--porcelain=v1", "-uall", capture=True):
@@ -101,7 +101,7 @@ def publish(tag: str) -> None:
     if upstream != f"origin/{branch}":
         raise ValueError(f"Branch must track origin/{branch}")
     validate_source()
-    assets = verify(tag)
+    assets = verify(tag, output_root)
     if run("git", "tag", "--list", tag, capture=True):
         raise ValueError(f"Local tag already exists: {tag}")
     if run("git", "ls-remote", "--tags", "origin", f"refs/tags/{tag}", capture=True):
@@ -133,20 +133,24 @@ def main() -> int:
     prepare = subparsers.add_parser("prepare", help="Run tests, build source ZIP and independent wheels")
     prepare.add_argument("--version", help="Repository version; package versions remain independent")
     prepare.add_argument("--dry-run", action="store_true")
+    prepare.add_argument("--asset-root", type=Path, help="Asset root; default: <repo>/dist")
     publish_parser = subparsers.add_parser("publish", help="Push a reviewed commit and create a GitHub Release")
     publish_parser.add_argument("tag", help="Prepared release tag, e.g. v0.2.0")
+    publish_parser.add_argument("--asset-root", type=Path, help="Prepared asset root; default: <repo>/dist")
     args = parser.parse_args()
     try:
         if args.action == "publish":
-            publish(args.tag)
+            publish(args.tag, args.asset_root)
         else:
             validate_source()
-            result = prepare_release.prepare(REPO, args.version, REPO / "dist", args.dry_run)
+            output_root = args.asset_root or REPO / "dist"
+            result = prepare_release.prepare(REPO, args.version, output_root, args.dry_run)
             if not args.dry_run:
-                verify(str(result["tag"]))
+                verify(str(result["tag"]), output_root)
             print(f"{'PREVIEW' if args.dry_run else 'READY'} {result['tag']}: {result['assets']} assets")
             if not args.dry_run:
-                print(f"Review changes, commit them, then run: python scripts/release.py publish {result['tag']}")
+                suffix = f" --asset-root {output_root}" if args.asset_root else ""
+                print(f"Review changes, commit them, then run: python scripts/release.py publish {result['tag']}{suffix}")
     except (OSError, ValueError, json.JSONDecodeError, zipfile.BadZipFile) as error:
         print(f"FAIL {error}", file=sys.stderr)
         return 1

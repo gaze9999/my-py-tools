@@ -17,6 +17,7 @@ python scripts/release.py prepare --dry-run
 ```powershell
 python scripts/release.py prepare
 python scripts/release.py prepare --version 0.3.0
+python scripts/release.py prepare --asset-root C:\path\release-assets
 ```
 
 `prepare` 會執行 `unittest` 與不產生 bytecode 的 Python AST 語法檢查, 在隔離的暫存副本建置兩個 wheel, 驗證 wheel CRC 與 metadata, 再產生
@@ -39,7 +40,10 @@ dist/v0.2.0/
 
 ```powershell
 python scripts/release.py publish v0.2.0
+python scripts/release.py publish v0.2.0 --asset-root C:\path\release-assets
 ```
+
+`--asset-root` 適合 sandbox 與 GitHub CLI 使用不同檔案權限的環境; 指定資料夾下仍使用 `<tag>/` 結構與同一份 manifest/hash 驗證, 不會放寬來源檢查
 
 `publish` 要求乾淨 working tree, 目前 branch 追蹤同名 `origin` branch, 本機與遠端 Tag 尚不存在, GitHub CLI 已登入, 並重新執行來源驗證; 輸入完整 Tag 確認後才 push branch 與建立 GitHub Release, 最後核對遠端 asset 名稱與大小
 
