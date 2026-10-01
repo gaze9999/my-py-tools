@@ -7,28 +7,18 @@ import json
 import sys
 from pathlib import Path
 
+from shared.workspace_core import load_workspace_core
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd(), help="Run directory parent (default: current directory)")
     parser.add_argument("--limit", type=int, default=20)
     args = parser.parse_args(argv)
     try:
-        root = args.root.expanduser().resolve()
-        if not root.is_dir():
-            raise ValueError(f"validation root does not exist: {root}")
-        if args.limit < 1:
-            raise ValueError("--limit must be positive")
-        runs = []
-        for path in sorted(root.glob("run-*/results.json"), reverse=True)[:args.limit]:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            results = data.get("results", [])
-            runs.append({"run": path.parent.name, "started": data.get("started"),
-                         "results": [{"name": row.get("name"), "status": row.get("status"),
-                                      "reason": row.get("reason"), "log": row.get("log")}
-                                     for row in results]})
-        print(json.dumps({"root": str(root), "runs": runs}, ensure_ascii=False, indent=2))
-        return 0
-    except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+        result = load_workspace_core().validation.index_evidence(args.root, args.limit)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 1 if result["errors"] else 0
+    except (OSError, UnicodeError, ValueError, RuntimeError, json.JSONDecodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 

@@ -1,6 +1,40 @@
-__pycache__
+# Python bytecode and tool caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+
+# Test and coverage output
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+test-results/
+junit*.xml
+
+# Build, package, and temporary output
+build/
+dist/
+*.egg-info/
+*.tmp
+*.temp
+*.bak
+*.log
+
+# Local tool output and recovery bundles
+.bundle/
+.gui/
+.work-artifact-cleaner/
+
+# Local configuration and virtual environments
 .env
-*.pyc
+.venv/
+.venv-*/
+venv/
 
 # Local project agent instructions
 /AGENTS.md

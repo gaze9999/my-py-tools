@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my-py-workspace-core"
+version = "0.1.0"
+description = "Deterministic workspace consistency and validation evidence APIs"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+include-package-data = false
+packages = ["my_py_workspace_core"]

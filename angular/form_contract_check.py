@@ -8,7 +8,11 @@ import re
 import sys
 from pathlib import Path
 
-CONTROL_RE = re.compile(r"(?:^|[,{]\s*)([A-Za-z_$][\w$]*)\s*:\s*(?:new\s+FormControl|this\.[\w$.]+\.control|\[)", re.MULTILINE)
+CONTROL_RE = re.compile(
+    r"(?:^|[,{]\s*)(?:(?P<bare>[A-Za-z_$][\w$]*)|(?P<quote>['\"])(?P<quoted>[^'\"]+)\2)\s*:\s*"
+    r"(?:new\s+(?:Untyped)?FormControl(?:\s*<[^>]+>)?|(?:this\.)?[\w$.]+\.control|\[)",
+    re.MULTILINE,
+)
 TEMPLATE_CONTROL_RE = re.compile(r"\bformControlName\s*=\s*(['\"])([^'\"]+)\1")
 
 
@@ -20,7 +24,7 @@ def read_json(path: Path) -> dict:
 
 
 def controls_in_source(text: str) -> set[str]:
-    return {match.group(1) for match in CONTROL_RE.finditer(text)}
+    return {(match.group("bare") or match.group("quoted")) for match in CONTROL_RE.finditer(text)}
 
 
 def controls_in_template(text: str) -> set[str]:
@@ -52,11 +56,20 @@ def main(argv: list[str] | None = None) -> int:
                 findings.append({"kind": "missing-source", "component": entry["source"], "control": ""})
                 continue
             source_controls = controls_in_source(source.read_text(encoding="utf-8"))
-            template_controls = controls_in_template(template.read_text(encoding="utf-8")) if template and template.is_file() else set()
+            template_exists = template is not None and template.is_file()
+            if template is not None and not template_exists:
+                findings.append(
+                    {"kind": "missing-template", "component": entry["template"], "control": ""}
+                )
+            template_controls = (
+                controls_in_template(template.read_text(encoding="utf-8"))
+                if template_exists
+                else set()
+            )
             for control in expected:
                 if control not in source_controls:
                     findings.append({"kind": "missing-source-control", "component": entry["source"], "control": control})
-                if template and control not in template_controls:
+                if template_exists and control not in template_controls:
                     findings.append({"kind": "missing-template-control", "component": entry["source"], "control": control})
             for control in template_controls - source_controls:
                 findings.append({"kind": "template-control-without-source", "component": entry["source"], "control": control})

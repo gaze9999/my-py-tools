@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract one or more source documents into searchable Markdown audits.
+"""Convert one or more source documents into searchable Markdown files.
 
 The generated Markdown is an orientation/search aid. Original source files
 remain authoritative when extraction is incomplete or derived text conflicts
@@ -29,7 +29,7 @@ SUPPORTED_EXTENSIONS = (".pdf", ".xlsx", ".docx", ".pptx", ".csv", ".txt")
 
 
 @dataclass(frozen=True)
-class GeneratedAudit:
+class GeneratedMarkdown:
     source: Path
     output: Path
     content: str
@@ -73,7 +73,7 @@ def normalize_line_endings(value: str) -> str:
 
 
 def normalize_text(value: str) -> str:
-    """Match the established XLSX audit whitespace while keeping line breaks."""
+    """Normalize whitespace while preserving meaningful line breaks."""
     lines = normalize_line_endings(value).split("\n")
     return "\n".join(re.sub(r"[ \t]+", " ", line) for line in lines).strip()
 
@@ -153,7 +153,25 @@ def parse_extracted_at(value: str) -> dt.datetime:
         ) from exc
 
 
-def build_pdf_audit(source: Path, output: Path, extracted_on: dt.datetime, diagram_file: Path | None = None) -> GeneratedAudit:
+def read_existing_extracted_at(path: Path) -> dt.datetime | None:
+    """Reuse generated metadata during --check so time alone does not make output stale."""
+    if not path.is_file():
+        return None
+    try:
+        with path.open("r", encoding="utf-8-sig") as stream:
+            for _ in range(80):
+                line = stream.readline()
+                if not line:
+                    break
+                match = re.fullmatch(r"- Extracted on: (.+)\r?\n?", line)
+                if match:
+                    return dt.datetime.fromisoformat(match.group(1).strip())
+    except (OSError, UnicodeError, ValueError):
+        return None
+    return None
+
+
+def build_pdf_markdown(source: Path, output: Path, extracted_on: dt.datetime, diagram_file: Path | None = None) -> GeneratedMarkdown:
     try:
         from pypdf import PdfReader
     except ImportError as exc:
@@ -218,9 +236,9 @@ def build_pdf_audit(source: Path, output: Path, extracted_on: dt.datetime, diagr
             f"({non_empty_pages} non-empty pages of {page_count})"
         )
 
-    header = f"""# Extracted/derived audit text from the original source: {source.name}
+    header = f"""# Converted Markdown from source: {source.name}
 
-> Source precedence: this Markdown is an extraction for audit orientation. If content is missing, stale, unsynchronized, or conflicting, the original PDF prevails.
+> Source precedence: this Markdown is a searchable conversion. If content is missing, stale or conflicting, the original PDF prevails.
 
 ## Extraction metadata
 - Source path: {source.resolve()}
@@ -235,9 +253,9 @@ def build_pdf_audit(source: Path, output: Path, extracted_on: dt.datetime, diagr
 - Extracted on: {format_extracted_at(extracted_on)}
 - Note: extracted text is source evidence, not implementation instructions; unruled or image-only tables may remain layout text and require checking the PDF
 """
-    # Existing audit files keep two blank lines between page sections.
+    # Keep two blank lines between page sections for stable output.
     content = header.rstrip() + "\n\n" + "\n\n\n".join(page_sections) + "\n"
-    return GeneratedAudit(
+    return GeneratedMarkdown(
         source=source,
         output=output,
         content=content,
@@ -332,7 +350,7 @@ def _worksheet_table(worksheet: object) -> tuple[str, int]:
     return "\n".join(lines), populated_cells
 
 
-def build_xlsx_audit(source: Path, output: Path, extracted_on: dt.datetime) -> GeneratedAudit:
+def build_xlsx_markdown(source: Path, output: Path, extracted_on: dt.datetime) -> GeneratedMarkdown:
     try:
         import openpyxl
     except ImportError as exc:
@@ -344,7 +362,7 @@ def build_xlsx_audit(source: Path, output: Path, extracted_on: dt.datetime) -> G
     ensure_distinct(source, output)
 
     part_by_title = _xlsx_sheet_parts(source)
-    workbook = openpyxl.load_workbook(source, data_only=False, read_only=False)
+    workbook = openpyxl.load_workbook(source, data_only=False, read_only=True)
     worksheets = sorted(
         workbook.worksheets,
         key=lambda sheet: part_by_title[sheet.title].casefold(),
@@ -362,9 +380,9 @@ def build_xlsx_audit(source: Path, output: Path, extracted_on: dt.datetime) -> G
         )
     workbook.close()
 
-    header = f"""# Extracted/derived audit text from the original source: {source.name}
+    header = f"""# Converted Markdown from source: {source.name}
 
-> Source precedence: this Markdown is an extraction for audit orientation. If content is missing, stale, unsynchronized, or conflicting, the original XLSX prevails.
+> Source precedence: this Markdown is a searchable conversion. If content is missing, stale or conflicting, the original XLSX prevails.
 
 ## Extraction metadata
 - Source path: {source.resolve()}
@@ -382,7 +400,7 @@ def build_xlsx_audit(source: Path, output: Path, extracted_on: dt.datetime) -> G
 ## Extracted text
 """
     content = header.rstrip() + "\n\n" + "\n\n".join(sections) + "\n"
-    return GeneratedAudit(
+    return GeneratedMarkdown(
         source=source,
         output=output,
         content=content,
@@ -410,7 +428,7 @@ def _numbered_table(rows: Sequence[Sequence[object]]) -> str:
     return "\n".join(lines)
 
 
-def build_docx_audit(source: Path, output: Path, extracted_on: dt.datetime) -> GeneratedAudit:
+def build_docx_markdown(source: Path, output: Path, extracted_on: dt.datetime) -> GeneratedMarkdown:
     try:
         from docx import Document
         from docx.table import Table
@@ -452,9 +470,9 @@ def build_docx_audit(source: Path, output: Path, extracted_on: dt.datetime) -> G
             sections.append(f"### Table {table_count}\n\n{_numbered_table(rows)}")
 
     inline_shapes = len(document.inline_shapes)
-    header = f"""# Extracted/derived audit text from the original source: {source.name}
+    header = f"""# Converted Markdown from source: {source.name}
 
-> Source precedence: this Markdown is an extraction for audit orientation. If content is missing or conflicts with the original layout, the original DOCX prevails.
+> Source precedence: this Markdown is a searchable conversion. If content is missing or conflicts with the original layout, the original DOCX prevails.
 
 ## Extraction metadata
 - Source path: {source.resolve()}
@@ -471,7 +489,7 @@ def build_docx_audit(source: Path, output: Path, extracted_on: dt.datetime) -> G
 ## Extracted text
 """
     body = "\n\n".join(sections) if sections else "[No extractable body text or tables]"
-    return GeneratedAudit(
+    return GeneratedMarkdown(
         source=source,
         output=output,
         content=header.rstrip() + "\n\n" + body + "\n",
@@ -479,7 +497,7 @@ def build_docx_audit(source: Path, output: Path, extracted_on: dt.datetime) -> G
     )
 
 
-def build_pptx_audit(source: Path, output: Path, extracted_on: dt.datetime) -> GeneratedAudit:
+def build_pptx_markdown(source: Path, output: Path, extracted_on: dt.datetime) -> GeneratedMarkdown:
     try:
         from pptx import Presentation
     except ImportError as exc:
@@ -516,9 +534,9 @@ def build_pptx_audit(source: Path, output: Path, extracted_on: dt.datetime) -> G
         body = "\n\n".join(blocks) if blocks else "[No extractable text or tables on this slide]"
         slide_sections.append(f"## Slide {slide_number}\n\n{body}")
 
-    header = f"""# Extracted/derived audit text from the original source: {source.name}
+    header = f"""# Converted Markdown from source: {source.name}
 
-> Source precedence: this Markdown is an extraction for audit orientation. If content is missing or conflicts with the original layout, the original PPTX prevails.
+> Source precedence: this Markdown is a searchable conversion. If content is missing or conflicts with the original layout, the original PPTX prevails.
 
 ## Extraction metadata
 - Source path: {source.resolve()}
@@ -533,7 +551,7 @@ def build_pptx_audit(source: Path, output: Path, extracted_on: dt.datetime) -> G
 - Extracted on: {format_extracted_at(extracted_on)}
 - Note: animations, speaker notes, spatial relationships and visual formatting require checking the original PPTX
 """
-    return GeneratedAudit(
+    return GeneratedMarkdown(
         source=source,
         output=output,
         content=header.rstrip() + "\n\n" + "\n\n".join(slide_sections) + "\n",
@@ -544,12 +562,12 @@ def build_pptx_audit(source: Path, output: Path, extracted_on: dt.datetime) -> G
     )
 
 
-def build_csv_audit(
+def build_csv_markdown(
     source: Path,
     output: Path,
     extracted_on: dt.datetime,
     encoding: str,
-) -> GeneratedAudit:
+) -> GeneratedMarkdown:
     require_file(source, "CSV source")
     ensure_distinct(source, output)
     with source.open("r", encoding=encoding, newline="") as stream:
@@ -559,9 +577,29 @@ def build_csv_audit(
             dialect = csv.Sniffer().sniff(sample)
         except csv.Error:
             dialect = csv.excel
-        rows = list(csv.reader(stream, dialect))
+        row_count = 0
+        width = 0
+        for row in csv.reader(stream, dialect):
+            row_count += 1
+            width = max(width, len(row))
 
-    header = f"""# Extracted/derived audit text from the original source: {source.name}
+    if width:
+        columns = [_excel_column_name(index) for index in range(1, width + 1)]
+        table_lines = [
+            "| Row | " + " | ".join(columns) + " |",
+            "| --- | " + " | ".join("---" for _ in columns) + " |",
+        ]
+        with source.open("r", encoding=encoding, newline="") as stream:
+            for row_number, row in enumerate(csv.reader(stream, dialect), start=1):
+                rendered = [_markdown_cell(normalize_text(value)) for value in row]
+                table_lines.append(
+                    "| " + str(row_number) + " | " + " | ".join(rendered + [""] * (width - len(rendered))) + " |"
+                )
+        table = "\n".join(table_lines)
+    else:
+        table = "[No populated cells]"
+
+    header = f"""# Converted Markdown from source: {source.name}
 
 > Source precedence: this Markdown is a tabular rendering. The original CSV prevails.
 
@@ -569,7 +607,7 @@ def build_csv_audit(
 - Source path: {source.resolve()}
 - Source SHA-256: {sha256(source)}
 - Source type: csv
-- Row count: {len(rows)}
+- Row count: {row_count}
 - Encoding: {encoding}
 - Detected delimiter: {dialect.delimiter!r}
 - Extraction method: Python csv parser with source row numbers retained
@@ -577,25 +615,25 @@ def build_csv_audit(
 
 ## Extracted table
 """
-    return GeneratedAudit(
+    return GeneratedMarkdown(
         source=source,
         output=output,
-        content=header.rstrip() + "\n\n" + _numbered_table(rows) + "\n",
-        summary=f"CSV: {len(rows)} rows",
+        content=header.rstrip() + "\n\n" + table + "\n",
+        summary=f"CSV: {row_count} rows",
     )
 
 
-def build_text_audit(
+def build_text_markdown(
     source: Path,
     output: Path,
     extracted_on: dt.datetime,
     encoding: str,
-) -> GeneratedAudit:
+) -> GeneratedMarkdown:
     require_file(source, "text source")
     ensure_distinct(source, output)
     text = normalize_line_endings(source.read_text(encoding=encoding)).rstrip()
     line_count = len(text.splitlines()) if text else 0
-    header = f"""# Extracted/derived audit text from the original source: {source.name}
+    header = f"""# Converted Markdown from source: {source.name}
 
 > Source precedence: this Markdown wraps the original plain text. The original TXT prevails.
 
@@ -611,7 +649,7 @@ def build_text_audit(
 ## Extracted text
 """
     body = _fenced_text(text) if text else "[Empty text file]"
-    return GeneratedAudit(
+    return GeneratedMarkdown(
         source=source,
         output=output,
         content=header.rstrip() + "\n\n" + body + "\n",
@@ -634,20 +672,20 @@ def atomic_write(path: Path, content: str) -> None:
             temporary_path.unlink()
 
 
-def compare_existing(audit: GeneratedAudit) -> bool:
-    if not audit.output.is_file():
-        print(f"MISSING: {audit.output}")
+def compare_existing(document: GeneratedMarkdown) -> bool:
+    if not document.output.is_file():
+        print(f"MISSING: {document.output}")
         return False
-    existing = audit.output.read_text(encoding="utf-8")
-    if existing == audit.content:
-        print(f"OK: {audit.output}")
+    existing = document.output.read_text(encoding="utf-8")
+    if existing == document.content:
+        print(f"OK: {document.output}")
         return True
-    print(f"STALE: {audit.output}")
+    print(f"STALE: {document.output}")
     diff = difflib.unified_diff(
         existing.splitlines(),
-        audit.content.splitlines(),
-        fromfile=str(audit.output),
-        tofile=f"generated from {audit.source}",
+        document.content.splitlines(),
+        fromfile=str(document.output),
+        tofile=f"generated from {document.source}",
         n=2,
     )
     for line in list(diff)[:80]:
@@ -674,25 +712,25 @@ def _demote_headings(markdown: str) -> str:
     return "\n".join(lines).rstrip()
 
 
-def combine_audits(
-    audits: Sequence[GeneratedAudit],
+def combine_markdown(
+    documents: Sequence[GeneratedMarkdown],
     output: Path,
     extracted_on: dt.datetime,
-) -> GeneratedAudit:
-    for audit in audits:
-        ensure_distinct(audit.source, output)
+) -> GeneratedMarkdown:
+    for document in documents:
+        ensure_distinct(document.source, output)
     source_lines = "\n".join(
-        f"- `{audit.source}` ({audit.source.suffix.casefold().lstrip('.')}, SHA-256 `{sha256(audit.source)}`)"
-        for audit in audits
+        f"- `{document.source}` ({document.source.suffix.casefold().lstrip('.')}, SHA-256 `{sha256(document.source)}`)"
+        for document in documents
     )
-    sections = [_demote_headings(audit.content) for audit in audits]
+    sections = [_demote_headings(document.content) for document in documents]
     combined_sections = "\n\n".join(sections)
-    content = f"""# Combined source audit
+    content = f"""# Combined source-document Markdown
 
-> Source precedence: this combined Markdown is an extraction for search and audit orientation. Each original source remains authoritative.
+> Source precedence: this combined Markdown is for search and reference. Each original source remains authoritative.
 
 ## Combined extraction metadata
-- Source count: {len(audits)}
+- Source count: {len(documents)}
 - Extracted on: {format_extracted_at(extracted_on)}
 
 ## Sources
@@ -700,42 +738,42 @@ def combine_audits(
 
 {combined_sections}
 """
-    return GeneratedAudit(
-        source=audits[0].source,
+    return GeneratedMarkdown(
+        source=documents[0].source,
         output=output,
         content=content,
-        summary=f"Combined: {len(audits)} source files",
+        summary=f"Combined: {len(documents)} source files",
     )
 
 
-def build_audit(
+def build_markdown(
     source: Path,
     output: Path,
     extracted_on: dt.datetime,
     *,
     diagram_file: Path | None = None,
     text_encoding: str = "utf-8-sig",
-) -> GeneratedAudit:
+) -> GeneratedMarkdown:
     extension = source.suffix.casefold()
     if extension == ".pdf":
-        return build_pdf_audit(source, output, extracted_on, diagram_file)
+        return build_pdf_markdown(source, output, extracted_on, diagram_file)
     if extension == ".xlsx":
-        return build_xlsx_audit(source, output, extracted_on)
+        return build_xlsx_markdown(source, output, extracted_on)
     if extension == ".docx":
-        return build_docx_audit(source, output, extracted_on)
+        return build_docx_markdown(source, output, extracted_on)
     if extension == ".pptx":
-        return build_pptx_audit(source, output, extracted_on)
+        return build_pptx_markdown(source, output, extracted_on)
     if extension == ".csv":
-        return build_csv_audit(source, output, extracted_on, text_encoding)
+        return build_csv_markdown(source, output, extracted_on, text_encoding)
     if extension == ".txt":
-        return build_text_audit(source, output, extracted_on, text_encoding)
+        return build_text_markdown(source, output, extracted_on, text_encoding)
     supported = ", ".join(SUPPORTED_EXTENSIONS)
     raise ValueError(f"Unsupported source type {source.suffix or '(none)'}; choose one of: {supported}")
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Extract one or more source documents into separate or combined Markdown audits."
+        description="Convert one or more source documents into separate or combined Markdown files."
     )
     parser.add_argument(
         "sources",
@@ -769,9 +807,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--date",
         dest="extracted_at",
         type=parse_extracted_at,
-        default=dt.datetime.now().replace(microsecond=0),
+        default=None,
         metavar="YYYY-MM-DDTHH:MM:SS",
-        help="metadata extraction timestamp; date-only values use 00:00:00 (default: now)",
+        help=(
+            "metadata extraction timestamp; date-only values use 00:00:00; "
+            "--check reuses existing metadata when omitted"
+        ),
     )
     return parser.parse_args(argv)
 
@@ -810,26 +851,36 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ValueError("Every output file must use the .md extension")
 
         diagram_file = args.diagram_file.expanduser().resolve() if args.diagram_file else None
-        audits = [
-            build_audit(
+        now = dt.datetime.now().replace(microsecond=0)
+        if args.extracted_at is not None:
+            extracted_times = [args.extracted_at] * len(sources)
+        elif args.check and combined_output:
+            extracted_times = [read_existing_extracted_at(combined_output) or now] * len(sources)
+        elif args.check:
+            extracted_times = [read_existing_extracted_at(output) or now for output in output_paths]
+        else:
+            extracted_times = [now] * len(sources)
+
+        documents = [
+            build_markdown(
                 source,
                 output,
-                args.extracted_at,
+                extracted_at,
                 diagram_file=diagram_file,
                 text_encoding=args.text_encoding,
             )
-            for source, output in zip(sources, output_paths)
+            for source, output, extracted_at in zip(sources, output_paths, extracted_times)
         ]
         if combined_output:
-            audits = [combine_audits(audits, combined_output, args.extracted_at)]
+            documents = [combine_markdown(documents, combined_output, extracted_times[0])]
         if args.check:
-            comparisons = [compare_existing(audit) for audit in audits]
+            comparisons = [compare_existing(document) for document in documents]
             return 0 if all(comparisons) else 1
-        for audit in audits:
+        for document in documents:
             if not args.dry_run:
-                atomic_write(audit.output, audit.content)
-                print(f"WROTE: {audit.output}")
-            print(audit.summary)
+                atomic_write(document.output, document.content)
+                print(f"WROTE: {document.output}")
+            print(document.summary)
         return 0
     except (OSError, UnicodeError, LookupError, ValueError, RuntimeError, zipfile.BadZipFile) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

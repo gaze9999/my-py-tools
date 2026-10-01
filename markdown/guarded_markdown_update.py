@@ -10,7 +10,10 @@ import sys
 import tempfile
 
 
-from shared.config import ToolConfig
+if __package__ and __package__.startswith("my_py_document_core."):
+    from ..shared.config import ToolConfig
+else:
+    from shared.config import ToolConfig
 
 TARGETS = ("context", "progress", "history")
 

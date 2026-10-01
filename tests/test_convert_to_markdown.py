@@ -5,10 +5,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from audit.source_audit_extract import load_diagram_overrides, main, sha256
+from documents.convert_to_markdown import load_diagram_overrides, main, sha256
 
 
-class SourceAuditExtractTests(unittest.TestCase):
+class DocumentConversionTests(unittest.TestCase):
     def test_single_text_input_defaults_to_same_directory(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory, "notes.txt")
@@ -34,7 +34,7 @@ class SourceAuditExtractTests(unittest.TestCase):
     def test_extracted_at_preserves_hours_minutes_and_seconds(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory, "notes.txt")
-            output = Path(directory, "audit.md")
+            output = Path(directory, "converted.md")
             source.write_text("timestamp", encoding="utf-8")
 
             self.assertEqual(
@@ -53,6 +53,7 @@ class SourceAuditExtractTests(unittest.TestCase):
                 "Extracted on: 2026-09-22 14:35:27",
                 output.read_text(encoding="utf-8"),
             )
+            self.assertEqual(main([str(source), "--output", str(output), "--check"]), 0)
 
     def test_multiple_inputs_support_separate_and_combined_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -76,7 +77,7 @@ class SourceAuditExtractTests(unittest.TestCase):
                 0,
             )
             content = combined.read_text(encoding="utf-8")
-            self.assertIn("# Combined source audit", content)
+            self.assertIn("# Combined source-document Markdown", content)
             self.assertIn("notes.txt", content)
             self.assertIn("rows.csv", content)
 

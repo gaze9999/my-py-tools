@@ -5,21 +5,10 @@ import sys
 import unittest
 from pathlib import Path
 
+from gui.catalog import TOOLS
 
-MODULES = (
-    "angular.component_inventory",
-    "angular.form_contract_check",
-    "angular.generator_preflight",
-    "angular.change_impact_report",
-    "audit.source_audit_extract",
-    "audit.extract_field_contract_matrix",
-    "maintenance.cleanup_work_artifacts",
-    "maintenance.rewrite_git_history",
-    "markdown.guarded_markdown_update",
-    "markdown.markdown_semantic_diff",
-    "text.tokenizer",
-    "validation.validation_evidence_index",
-)
+
+MODULES = tuple(tool.module for tool in TOOLS) + ("gui.launcher", "gui.background_launcher")
 
 
 class CliSmokeTests(unittest.TestCase):

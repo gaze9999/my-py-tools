@@ -19,14 +19,14 @@ def read_stdin() -> str:
     return sys.stdin.read()
 
 
-def fallback_count(text: str, ascii_chars_per_token: int, non_ascii_chars_per_token: int) -> tuple[int, int, int]:
+def fallback_count(text: str, ascii_chars_per_token: float, non_ascii_chars_per_token: float) -> tuple[int, int, int]:
     ascii_count = sum(1 for ch in text if ord(ch) < 128)
     non_ascii_count = len(text) - ascii_count
     if len(text) == 0:
         return 0, 0, 0
 
     min_tokens = math.ceil(ascii_count / ascii_chars_per_token + non_ascii_count / non_ascii_chars_per_token)
-    max_tokens = max(min_tokens, math.ceil(ascii_count / max(1, ascii_chars_per_token - 1) + non_ascii_count))
+    max_tokens = max(min_tokens, math.ceil(ascii_count / max(1.0, ascii_chars_per_token - 1) + non_ascii_count))
     mid_tokens = math.ceil((min_tokens + max_tokens) / 2)
     return min_tokens, max_tokens, mid_tokens
 
@@ -102,10 +102,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         tokens = tokenize_with_tiktoken(text, encoding)
         result.update({"method": "tiktoken", "tokens": tokens, "min_tokens": tokens, "max_tokens": tokens})
-    except Exception:
+    except Exception as exc:
         result["method"] = "fallback"
-        min_tokens, max_tokens, mid_tokens = fallback_count(text, max(1, int(math.ceil(ascii_ratio))),
-                                                            max(1, int(math.ceil(non_ascii_ratio))))
+        result["fallback_reason"] = f"{type(exc).__name__}: {exc}"
+        min_tokens, max_tokens, mid_tokens = fallback_count(text, ascii_ratio, non_ascii_ratio)
         result.update({"min_tokens": min_tokens, "max_tokens": max_tokens, "mid_tokens": mid_tokens})
 
     if args.json:

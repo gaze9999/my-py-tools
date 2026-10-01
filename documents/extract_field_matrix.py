@@ -1,4 +1,4 @@
-"""Extract field-contract matrix from the configured source Markdown."""
+"""Extract a field matrix from converted source-document Markdown."""
 
 from __future__ import annotations
 
@@ -6,12 +6,26 @@ import argparse
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 
-from shared.config import ToolConfig
+if __package__ and __package__.startswith("my_py_document_core."):
+    from ..shared.config import ToolConfig
+else:
+    from shared.config import ToolConfig
 
 
 DEFAULT_TITLE_ENV_KEY = "TOOL_FIELD_MATRIX_TITLE"
+FIELD_HEADERS = ("欄位名稱", "畫面欄位名稱", "欄位")
+FORMAT_HEADERS = ("欄位格式", "資料格式", "格式", "型別")
+API_HEADERS = (
+    "資料欄位名稱(API對應名稱/程式對應名稱)",
+    "資料欄位名稱",
+    "API欄位名稱",
+    "API欄位",
+    "程式欄位名稱",
+)
+DESCRIPTION_HEADERS = ("說明", "欄位說明", "備註")
 
 
 def normalize_header(value: str) -> str:
@@ -32,7 +46,46 @@ def parse_table_line(line: str) -> list[str]:
     line = line.strip()
     if not line.startswith("|"):
         return []
-    return [cell.strip() for cell in line.strip("|").split("|")]
+    body = line[1:-1] if line.endswith("|") else line[1:]
+    cells: list[str] = []
+    current: list[str] = []
+    escaped = False
+    for character in body:
+        if escaped:
+            if character in {"|", "\\"}:
+                current.append(character)
+            else:
+                current.extend(("\\", character))
+            escaped = False
+        elif character == "\\":
+            escaped = True
+        elif character == "|":
+            cells.append("".join(current).strip())
+            current = []
+        else:
+            current.append(character)
+    if escaped:
+        current.append("\\")
+    cells.append("".join(current).strip())
+    return cells
+
+
+def find_header_index(header_map: dict[str, int], choices: tuple[str, ...]) -> int:
+    return next((header_map[name] for name in choices if name in header_map), -1)
+
+
+def write_text_atomic(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def is_separator_row(line: str) -> bool:
@@ -43,13 +96,13 @@ def is_separator_row(line: str) -> bool:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Extract field-contract matrix table rows.")
-    parser.add_argument("source_markdown", type=Path, help="PDF audit Markdown source")
+    parser = argparse.ArgumentParser(description="Extract field-matrix table rows from converted Markdown.")
+    parser.add_argument("source_markdown", type=Path, help="Converted PDF Markdown source")
     parser.add_argument(
         "--output",
         "-o",
         type=Path,
-        help="Output Markdown path (default: SOURCE_STEM-欄位契約矩陣.md beside source)",
+        help="Output Markdown path (default: SOURCE_STEM-欄位規格矩陣.md beside source)",
     )
     parser.add_argument("--env-file", type=Path, help="Optional TOOL_* variable file")
     parser.add_argument(
@@ -67,11 +120,11 @@ def main(argv: list[str] | None = None) -> int:
     output_path = (
         args.output.expanduser().resolve()
         if args.output
-        else source_path.with_name(f"{source_path.stem}-欄位契約矩陣.md")
+        else source_path.with_name(f"{source_path.stem}-欄位規格矩陣.md")
     )
     title = args.title or settings.value(
         DEFAULT_TITLE_ENV_KEY,
-        f"{source_path.stem} - 欄位契約矩陣（抽取版）",
+        f"{source_path.stem} - 欄位規格矩陣 (抽取版)",
     )
 
     if not source_path.is_file():
@@ -97,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if re.match(r"^##\s+PDF page\s+\d+", line):
             page_no = re.sub(r"^##\s+PDF page\s+", "", line).strip()
+            section = ""
             i += 1
             continue
 
@@ -129,8 +183,8 @@ def main(argv: list[str] | None = None) -> int:
                 if not cells:
                     continue
                 normalized = [normalize_header(cell) for cell in cells]
-                if any("欄位名稱" in cell for cell in normalized) and any(
-                    "說明" in cell for cell in normalized
+                if any(cell in FIELD_HEADERS for cell in normalized) and any(
+                    cell in DESCRIPTION_HEADERS for cell in normalized
                 ):
                     header_index = row_idx
                     break
@@ -147,17 +201,14 @@ def main(argv: list[str] | None = None) -> int:
             header_map: dict[str, int] = {
                 normalize_header(col): idx for idx, col in enumerate(header)
             }
-            if "欄位名稱" not in header_map:
+            field_idx = find_header_index(header_map, FIELD_HEADERS)
+            if field_idx < 0:
                 i += 1
                 continue
 
-            field_idx = header_map["欄位名稱"]
-            format_idx = header_map.get("欄位格式", -1)
-            api_idx = header_map.get(
-                "資料欄位名稱(API對應名稱/程式對應名稱)",
-                header_map.get("資料欄位名稱", -1),
-            )
-            desc_idx = header_map.get("說明", -1)
+            format_idx = find_header_index(header_map, FORMAT_HEADERS)
+            api_idx = find_header_index(header_map, API_HEADERS)
+            desc_idx = find_header_index(header_map, DESCRIPTION_HEADERS)
 
             data_start = header_index + 1
             while (
@@ -214,8 +265,7 @@ def main(argv: list[str] | None = None) -> int:
     lines_out.append(f"- 抽取欄位數：{len(entries)}")
 
     try:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text("\n".join(lines_out) + "\n", encoding="utf-8", newline="\n")
+        write_text_atomic(output_path, "\n".join(lines_out) + "\n")
     except OSError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

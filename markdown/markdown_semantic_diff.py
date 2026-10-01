@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import hashlib
 import json
 import re
@@ -16,7 +17,18 @@ def digest(path: Path) -> str:
 
 def tokens(path: Path) -> dict[str, list[str]]:
     result = {"headings": [], "list_items": [], "table_rows": []}
+    fence: tuple[str, int] | None = None
     for raw in path.read_text(encoding="utf-8-sig").splitlines():
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", raw)
+        if marker:
+            run, tail = marker.groups()
+            if fence is None:
+                fence = (run[0], len(run))
+            elif run[0] == fence[0] and len(run) >= fence[1] and not tail.strip():
+                fence = None
+            continue
+        if fence is not None:
+            continue
         line = re.sub(r"\s+", " ", raw.strip())
         if re.match(r"^#{1,6} ", line):
             result["headings"].append(line)
@@ -36,9 +48,15 @@ def main(argv: list[str] | None = None) -> int:
         if not args.left.is_file() or not args.right.is_file():
             raise ValueError("Both inputs must be existing Markdown files")
         left, right = tokens(args.left), tokens(args.right)
-        changes = {kind: {"only_left": sorted(set(left[kind]) - set(right[kind])),
-                          "only_right": sorted(set(right[kind]) - set(left[kind]))}
-                   for kind in left}
+        changes = {}
+        for kind in left:
+            left_counts = Counter(left[kind])
+            right_counts = Counter(right[kind])
+            changes[kind] = {
+                "only_left": sorted((left_counts - right_counts).elements()),
+                "only_right": sorted((right_counts - left_counts).elements()),
+                "order_changed": left_counts == right_counts and left[kind] != right[kind],
+            }
         print(json.dumps({"left": str(args.left), "right": str(args.right),
                           "left_sha256": digest(args.left), "right_sha256": digest(args.right), "changes": changes},
                          ensure_ascii=False, indent=2))

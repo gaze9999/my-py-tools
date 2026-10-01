@@ -176,30 +176,7 @@ def main(argv: list[str] | None = None) -> int:
     script_path = Path(__file__).resolve()
 
     # ---------------------------------------------------------
-    # 1. 優先設定 local exclude
-    # ---------------------------------------------------------
-
-    try:
-        exclude_path = update_git_exclude(repo)
-    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
-        print(f"錯誤: {error}")
-        return 1
-
-    # ---------------------------------------------------------
-    # 2. 建立 bundle 目錄
-    # ---------------------------------------------------------
-
-    bundle_dir = repo / ".bundle"
-    bundle_dir.mkdir(parents=True, exist_ok=True)
-
-    print("Local exclude 已設定")
-    print(f"Exclude    : {exclude_path}")
-    print(f"Tool       : {script_path}")
-    print("Bundle     : .bundle/")
-    print()
-
-    # ---------------------------------------------------------
-    # 4. 讀取 repository local identity
+    # 1. 讀取 repository local identity 與 worktree 狀態
     # ---------------------------------------------------------
 
     user_name = get_local_config(repo, "user.name")
@@ -247,10 +224,27 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # ---------------------------------------------------------
-    # 5. 建立 bundle 備份
+    # 2. 設定 local exclude 並建立 bundle 目錄
     # ---------------------------------------------------------
 
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    try:
+        exclude_path = update_git_exclude(repo)
+        bundle_dir = repo / ".bundle"
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+        print(f"錯誤: 無法準備本機備份目錄: {error}")
+        return 1
+
+    print("Local exclude 已設定")
+    print(f"Exclude    : {exclude_path}")
+    print(f"Tool       : {script_path}")
+    print("Bundle     : .bundle/")
+
+    # ---------------------------------------------------------
+    # 3. 建立 bundle 備份
+    # ---------------------------------------------------------
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
 
     backup_path = (
         bundle_dir
@@ -260,20 +254,24 @@ def main(argv: list[str] | None = None) -> int:
     print()
     print(f"建立備份: {backup_path}")
 
-    run_git(
-        "bundle",
-        "create",
-        str(backup_path),
-        "--all",
-        cwd=repo,
-    )
+    try:
+        run_git(
+            "bundle",
+            "create",
+            str(backup_path),
+            "--all",
+            cwd=repo,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        print(f"錯誤: bundle 備份建立失敗: {error}")
+        return 1
 
     if not backup_path.exists():
         print("錯誤: bundle 備份建立失敗")
         return 1
 
     # ---------------------------------------------------------
-    # 6. Rewrite identity
+    # 4. Rewrite identity
     # ---------------------------------------------------------
 
     filter_script = """
@@ -308,15 +306,16 @@ export GIT_COMMITTER_EMAIL="$NEW_GIT_EMAIL"
             env=env,
         )
 
-    except subprocess.CalledProcessError as error:
+    except (OSError, subprocess.SubprocessError) as error:
         print()
         print("Git history rewrite 失敗")
         print(f"Backup: {backup_path}")
-        print(f"Exit code: {error.returncode}")
-        return error.returncode
+        return_code = error.returncode if isinstance(error, subprocess.CalledProcessError) else 1
+        print(f"Exit code: {return_code}")
+        return return_code
 
     # ---------------------------------------------------------
-    # 7. 完成
+    # 5. 完成
     # ---------------------------------------------------------
 
     print()

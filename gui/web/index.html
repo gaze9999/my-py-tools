@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Py Tools</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">LOCAL TOOL LAUNCHER</p>
+      <h1>My Py Tools <small id="appVersion"></small></h1>
+    </div>
+    <div class="top-actions">
+      <span id="status" class="status idle">待命</span>
+      <button id="closeGui" class="ghost danger" type="button">關閉 GUI</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <label for="toolSearch">搜尋工具</label>
+      <input id="toolSearch" type="search" placeholder="名稱, 分類或 module">
+      <div id="categoryTabs" class="category-tabs" role="tablist" aria-label="工具資料夾分類"></div>
+      <div id="toolList" class="tool-list" aria-label="工具清單"></div>
+    </aside>
+
+    <section class="workspace">
+      <div class="tool-heading">
+        <div>
+          <p id="toolCategory" class="eyebrow"></p>
+          <h2 id="toolName">載入中</h2>
+          <p id="toolDescription" class="description"></p>
+        </div>
+        <code id="toolModule" class="module"></code>
+      </div>
+
+      <div id="toolWarning" class="warning" hidden></div>
+
+      <div class="drop-hint">
+        <strong>文件拖曳轉 Markdown</strong>
+        <span>將單一或多個 PDF, XLSX, DOCX, PPTX, CSV, TXT 拖到 <code>launch-gui.vbs</code>, 啟動後確認參數再執行, 預設會在來源旁產生同名 <code>.md</code></span>
+      </div>
+
+      <div class="form-grid">
+        <label class="field wide">
+          <span>Python 執行檔</span>
+          <div class="input-row">
+            <input id="pythonPath" type="text" spellcheck="false">
+            <button id="browsePython" class="ghost" type="button">瀏覽</button>
+          </div>
+        </label>
+
+        <label class="field wide">
+          <span>工作目錄</span>
+          <div class="input-row">
+            <input id="cwd" type="text" spellcheck="false">
+            <button id="browseCwd" class="ghost" type="button">瀏覽</button>
+          </div>
+        </label>
+
+        <label class="field wide">
+          <span>CLI 參數</span>
+          <textarea id="arguments" rows="5" spellcheck="false" placeholder="輸入位置參數與選項"></textarea>
+        </label>
+
+        <div class="argument-actions wide">
+          <button id="addFile" class="ghost" type="button">加入檔案路徑</button>
+          <button id="addDirectory" class="ghost" type="button">加入資料夾路徑</button>
+          <button id="applyExample" class="ghost" type="button">套用範例</button>
+        </div>
+
+        <div class="example wide">
+          <span>範例</span>
+          <code id="exampleArgs"></code>
+        </div>
+
+        <div class="command-preview wide">
+          <span>執行命令</span>
+          <code id="commandPreview"></code>
+        </div>
+      </div>
+
+      <div class="run-actions">
+        <button id="runHelp" class="secondary" type="button">顯示 Help</button>
+        <button id="runTool" class="primary" type="button">執行</button>
+        <button id="stopTool" class="danger" type="button" disabled>停止</button>
+        <button id="clearOutput" class="ghost" type="button">清除輸出</button>
+      </div>
+
+      <div id="progressTrack" class="progress-track" hidden aria-label="工具執行中">
+        <div class="progress-bar"></div>
+      </div>
+
+      <section class="console-panel" aria-label="工具輸出">
+        <div class="console-head">
+          <div>
+            <strong>執行輸出</strong>
+            <span id="exitCode"></span>
+          </div>
+          <button id="copyOutput" class="ghost compact" type="button">複製</button>
+        </div>
+        <pre id="output" tabindex="0"></pre>
+        <div class="stdin-row">
+          <input id="stdinValue" type="text" placeholder="需要互動輸入時在此輸入, 例如 REWRITE" disabled>
+          <button id="sendInput" class="secondary" type="button" disabled>送出 stdin</button>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="pathDialog">
+    <form method="dialog" class="dialog-shell">
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow">LOCAL PATH</p>
+          <h2 id="dialogTitle">選擇路徑</h2>
+        </div>
+        <button class="ghost" value="cancel" type="submit">關閉</button>
+      </div>
+      <div class="input-row">
+        <input id="pathLocation" type="text" spellcheck="false">
+        <button id="refreshPath" class="secondary" type="button">前往</button>
+      </div>
+      <div class="dialog-actions">
+        <button id="parentPath" class="ghost" type="button">上一層</button>
+        <button id="chooseCurrent" class="primary" type="button">選取目前資料夾</button>
+      </div>
+      <div id="pathEntries" class="path-entries"></div>
+      <p id="pathNotice" class="muted"></p>
+    </form>
+  </dialog>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

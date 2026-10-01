@@ -4,19 +4,29 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 MARKERS = ("selector:", "@Input", "@Output", "CustomEvent", "createCustomElement", "component-mapping")
+SOURCE_EXTENSIONS = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".html", ".scss", ".sass", ".less", ".css", ".json"}
 
 
 def changed(root: Path) -> list[str]:
-    commands = (("diff", "--name-only"), ("diff", "--cached", "--name-only"), ("ls-files", "--others", "--exclude-standard"))
+    commands = (
+        ("diff", "--name-only", "-z"),
+        ("diff", "--cached", "--name-only", "-z"),
+        ("ls-files", "--others", "--exclude-standard", "-z"),
+    )
     names: set[str] = set()
     for command in commands:
-        result = subprocess.run(("git", "-C", str(root), *command), check=True, capture_output=True, text=True, encoding="utf-8")
-        names.update(line.replace("\\", "/") for line in result.stdout.splitlines() if line)
+        result = subprocess.run(("git", "-C", str(root), *command), check=True, capture_output=True)
+        names.update(
+            os.fsdecode(raw).replace("\\", "/")
+            for raw in result.stdout.split(b"\0")
+            if raw
+        )
     return sorted(names)
 
 
@@ -30,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
         for name in changed(root):
             path = root / name
             markers = []
-            if path.suffix in {".ts", ".html", ".scss", ".css", ".json"} and path.is_file():
+            if path.suffix.casefold() in SOURCE_EXTENSIONS and path.is_file():
                 text = path.read_text(encoding="utf-8", errors="replace")
                 markers = [marker for marker in MARKERS if marker in text]
             rows.append({"path": name, "exists": path.exists(), "public_contract_markers": markers})

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -13,7 +14,9 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 
-SKIP_PARTS = {"node_modules", "dist", ".angular", ".nx", "coverage"}
+SKIP_PARTS = {
+    "node_modules", "dist", "build", "coverage", ".angular", ".nx", ".git", ".hg", ".svn", ".venv", "venv"
+}
 COMPONENT_CLASS_RE = re.compile(r"export\s+class\s+(\w+Component)\b")
 SELECTOR_RE = re.compile(r"\bselector\s*:\s*(['\"])(.*?)\1")
 TEMPLATE_URL_RE = re.compile(r"\btemplateUrl\s*:\s*(['\"])(.*?)\1")
@@ -59,8 +62,8 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         ),
         epilog=(
             "examples:\n"
-            "  python -m angular.component_inventory customer --project transaction-ui\n"
-            "  python -m angular.component_inventory transaction-ui\n"
+            "  python -m angular.component_inventory customer --project customer-ui\n"
+            "  python -m angular.component_inventory order-summary\n"
             "  python -m angular.component_inventory --changed --json"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -81,26 +84,31 @@ def relative(path: Path, root: Path) -> str:
         return path.resolve().as_posix()
 
 
-def is_skipped(path: Path) -> bool:
-    return any(part in SKIP_PARTS for part in path.parts)
+def workspace_files(root: Path) -> Iterable[Path]:
+    for current, directory_names, file_names in os.walk(root):
+        directory_names[:] = [name for name in directory_names if name.casefold() not in SKIP_PARTS]
+        for name in file_names:
+            yield Path(current, name)
 
 
-def load_projects(root: Path) -> list[Project]:
+def load_projects(root: Path, warnings: list[str] | None = None) -> list[Project]:
     projects: list[Project] = []
-    for base in (root / "apps", root / "libs"):
-        if not base.is_dir():
+    for project_file in (path for path in workspace_files(root) if path.name == "project.json"):
+        try:
+            data = json.loads(project_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            if warnings is not None:
+                warnings.append(f"Unable to read {relative(project_file, root)}: {exc}")
             continue
-        for project_file in base.rglob("project.json"):
-            if is_skipped(project_file):
-                continue
-            try:
-                data = json.loads(project_file.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            project_root = project_file.parent.resolve()
-            source_value = data.get("sourceRoot")
-            source_root = (root / source_value).resolve() if source_value else project_root
-            projects.append(Project(data.get("name", project_root.name), project_root, source_root))
+        if not isinstance(data, dict):
+            if warnings is not None:
+                warnings.append(f"Project file is not a JSON object: {relative(project_file, root)}")
+            continue
+        project_root = project_file.parent.resolve()
+        source_value = data.get("sourceRoot")
+        source_root = (root / source_value).resolve() if isinstance(source_value, str) else project_root
+        name = data.get("name")
+        projects.append(Project(name if isinstance(name, str) else project_root.name, project_root, source_root))
     return sorted(projects, key=lambda item: len(item.source_root.parts), reverse=True)
 
 
@@ -122,31 +130,28 @@ def resolve_import(source: Path, module_path: str) -> Path | None:
     return Path(f"{target}.ts")
 
 
-def custom_element_map(root: Path) -> dict[Path, set[str]]:
+def custom_element_map(root: Path, warnings: list[str] | None = None) -> dict[Path, set[str]]:
     result: dict[Path, set[str]] = {}
-    for base in (root / "apps", root / "libs"):
-        if not base.is_dir():
+    for mapping_file in (path for path in workspace_files(root) if path.name == "component-mapping.ts"):
+        try:
+            text = mapping_file.read_text(encoding="utf-8")
+        except OSError as exc:
+            if warnings is not None:
+                warnings.append(f"Unable to read {relative(mapping_file, root)}: {exc}")
             continue
-        for mapping_file in base.rglob("component-mapping.ts"):
-            if is_skipped(mapping_file):
+        imports: dict[str, Path] = {}
+        for match in IMPORT_RE.finditer(text):
+            resolved = resolve_import(mapping_file, match.group(3))
+            if resolved is None:
                 continue
-            try:
-                text = mapping_file.read_text(encoding="utf-8")
-            except OSError:
-                continue
-            imports: dict[str, Path] = {}
-            for match in IMPORT_RE.finditer(text):
-                resolved = resolve_import(mapping_file, match.group(3))
-                if resolved is None:
-                    continue
-                for imported in match.group(1).split(","):
-                    name = imported.strip().split(" as ")[-1].strip()
-                    if name:
-                        imports[name] = resolved
-            for match in MAPPING_RE.finditer(text):
-                target = imports.get(match.group(3))
-                if target is not None:
-                    result.setdefault(target.resolve(), set()).add(match.group(2))
+            for imported in match.group(1).split(","):
+                name = imported.strip().split(" as ")[-1].strip()
+                if name:
+                    imports[name] = resolved
+        for match in MAPPING_RE.finditer(text):
+            target = imports.get(match.group(3))
+            if target is not None:
+                result.setdefault(target.resolve(), set()).add(match.group(2))
     return result
 
 
@@ -175,25 +180,31 @@ def companion_path(source: Path, value: str, root: Path) -> str:
     return relative((source.parent / value).resolve(), root)
 
 
-def scan_components(root: Path, projects: Sequence[Project]) -> list[Component]:
-    custom = custom_element_map(root)
+def scan_components(
+    root: Path,
+    projects: Sequence[Project],
+    warnings: list[str] | None = None,
+) -> list[Component]:
+    custom = custom_element_map(root, warnings)
     components: list[Component] = []
-    for base in (root / "apps", root / "libs"):
-        if not base.is_dir():
+    for source in (path for path in workspace_files(root) if path.suffix.casefold() == ".ts"):
+        if source.name.endswith((".spec.ts", ".test.ts", ".d.ts")):
             continue
-        for source in base.rglob("*.ts"):
-            if is_skipped(source) or source.name.endswith((".spec.ts", ".test.ts", ".d.ts")):
-                continue
-            try:
-                text = source.read_text(encoding="utf-8")
-            except OSError:
-                continue
-            component_at = text.find("@Component")
+        try:
+            text = source.read_text(encoding="utf-8")
+        except OSError as exc:
+            if warnings is not None:
+                warnings.append(f"Unable to read {relative(source, root)}: {exc}")
+            continue
+        search_at = 0
+        while True:
+            component_at = text.find("@Component", search_at)
             if component_at < 0:
-                continue
+                break
             class_match = COMPONENT_CLASS_RE.search(text, component_at)
             if not class_match:
-                continue
+                break
+            search_at = class_match.end()
             metadata = text[component_at:class_match.start()]
             selector_match = SELECTOR_RE.search(metadata)
             template_match = TEMPLATE_URL_RE.search(metadata)
@@ -222,17 +233,21 @@ def scan_components(root: Path, projects: Sequence[Project]) -> list[Component]:
 
 def git_changed(root: Path) -> set[str]:
     commands = (
-        ["git", "-C", str(root), "diff", "--name-only", "--relative"],
-        ["git", "-C", str(root), "diff", "--cached", "--name-only", "--relative"],
-        ["git", "-C", str(root), "ls-files", "--others", "--exclude-standard"],
+        ["git", "-C", str(root), "diff", "--name-only", "--relative", "-z"],
+        ["git", "-C", str(root), "diff", "--cached", "--name-only", "--relative", "-z"],
+        ["git", "-C", str(root), "ls-files", "--others", "--exclude-standard", "-z"],
     )
     changed: set[str] = set()
     for command in commands:
         try:
-            process = subprocess.run(command, check=True, capture_output=True, text=True, encoding="utf-8")
+            process = subprocess.run(command, check=True, capture_output=True)
         except (OSError, subprocess.CalledProcessError) as error:
             raise RuntimeError(f"Unable to read Git changes: {error}") from error
-        changed.update(line.strip().replace("\\", "/") for line in process.stdout.splitlines() if line.strip())
+        changed.update(
+            os.fsdecode(raw).replace("\\", "/")
+            for raw in process.stdout.split(b"\0")
+            if raw
+        )
     return changed
 
 
@@ -253,7 +268,8 @@ def matches(component: Component, terms: Sequence[str]) -> bool:
 
 def changed_component(component: Component, changed: set[str]) -> bool:
     companions = {component.source, component.template or "", *component.styles}
-    return bool(companions & changed)
+    mapping_changed = component.custom_elements and any(Path(path).name == "component-mapping.ts" for path in changed)
+    return bool(companions & changed) or bool(mapping_changed)
 
 
 def print_text(components: Sequence[Component], total: int) -> None:
@@ -287,8 +303,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("error: --limit must be 0 or greater", file=sys.stderr)
         return 2
 
-    projects = load_projects(root)
-    results = [item for item in scan_components(root, projects) if matches(item, args.query)]
+    warnings: list[str] = []
+    projects = load_projects(root, warnings)
+    results = [item for item in scan_components(root, projects, warnings) if matches(item, args.query)]
     if args.project:
         results = [item for item in results if item.project.casefold() == args.project.casefold()]
     if args.changed:
@@ -302,10 +319,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     total = len(results)
     shown = results if args.limit == 0 else results[:args.limit]
     if args.json:
-        print(json.dumps({"workspace": str(root), "count": total, "components": [asdict(item) for item in shown]},
+        print(json.dumps({"workspace": str(root), "count": total, "components": [asdict(item) for item in shown],
+                          "warnings": warnings},
                          ensure_ascii=False, indent=2))
     else:
         print_text(shown, total)
+        for warning in warnings:
+            print(f"warning: {warning}", file=sys.stderr)
     return 0 if total else 1
 
 

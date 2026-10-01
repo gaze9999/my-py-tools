@@ -36,6 +36,7 @@ WORK_DIRECTORIES = {"work", ".work", "tmp", "temp"}
 CACHE_FILE_NAMES = {".coverage", ".DS_Store", "Thumbs.db", "desktop.ini"}
 CACHE_FILE_SUFFIXES = {".pyc", ".pyo", ".tmp", ".temp", ".swp"}
 NEVER_ENTER = {".git", ".hg", ".svn", ".codex", "logs", "backups", "quarantine"}
+QUARANTINE_MARKER = ".my-py-tools-quarantine.json"
 
 
 @dataclass(frozen=True)
@@ -75,27 +76,38 @@ def resolve_roots(values: list[str]) -> list[Path]:
     return roots
 
 
-def directory_size(path: Path) -> int:
+def directory_metrics(path: Path) -> tuple[int, float]:
     if path.is_symlink():
-        return 0
+        return 0, path.lstat().st_mtime
     total = 0
+    latest = path.stat(follow_symlinks=False).st_mtime
     for current, directory_names, file_names in os.walk(path, followlinks=False):
         directory_names[:] = [
             name for name in directory_names if not (Path(current) / name).is_symlink()
         ]
+        try:
+            latest = max(latest, Path(current).stat(follow_symlinks=False).st_mtime)
+        except OSError:
+            pass
         for name in file_names:
             try:
-                total += (Path(current) / name).stat(follow_symlinks=False).st_size
+                stat = (Path(current) / name).stat(follow_symlinks=False)
+                total += stat.st_size
+                latest = max(latest, stat.st_mtime)
             except OSError:
                 continue
-    return total
+    return total, latest
+
+
+def directory_size(path: Path) -> int:
+    return directory_metrics(path)[0]
 
 
 def contains_nested_repository(path: Path) -> bool:
     if not path.is_dir() or path.is_symlink():
         return False
-    for current, directory_names, _ in os.walk(path, followlinks=False):
-        if any(name in {".git", ".hg", ".svn"} for name in directory_names):
+    for current, directory_names, file_names in os.walk(path, followlinks=False):
+        if any(name in {".git", ".hg", ".svn"} for name in (*directory_names, *file_names)):
             return True
         directory_names[:] = [name for name in directory_names if name not in NEVER_ENTER]
     return False
@@ -189,7 +201,8 @@ def scan_root(
             except OSError as error:
                 skipped.append({"path": str(path), "reason": f"stat_failed: {error}"})
                 continue
-            if datetime.fromtimestamp(stat.st_mtime, timezone.utc) > cutoff:
+            size, latest_mtime = directory_metrics(path)
+            if datetime.fromtimestamp(latest_mtime, timezone.utc) > cutoff:
                 skipped.append({"path": str(path), "reason": "newer_than_minimum_age"})
                 continue
             candidates.append(
@@ -199,8 +212,8 @@ def scan_root(
                     relative_path=path.relative_to(root).as_posix(),
                     kind="directory",
                     reason=reason,
-                    size_bytes=directory_size(path),
-                    modified_at=utc_iso(stat.st_mtime),
+                    size_bytes=size,
+                    modified_at=utc_iso(latest_mtime),
                 )
             )
         directory_names[:] = [name for name in directory_names if name not in matched_directories]
@@ -262,6 +275,11 @@ def quarantine(
 ) -> list[dict[str, str]]:
     root_numbers = {str(root): index for index, root in enumerate(roots, start=1)}
     moved: list[dict[str, str]] = []
+    if candidates:
+        write_json(
+            destination / QUARANTINE_MARKER,
+            {"schema_version": 1, "tool": "my-py-tools.cleanup_work_artifacts", "created_at": utc_iso()},
+        )
     for candidate in candidates:
         source = Path(candidate.path)
         root_number = root_numbers[candidate.root]
@@ -269,6 +287,9 @@ def quarantine(
         target = destination / f"root-{root_number:02d}-{root_name}" / candidate.relative_path
         if not source.exists() and not source.is_symlink():
             append_event(event_log, {"event": "skipped_missing", "source": str(source)})
+            continue
+        if contains_nested_repository(source) or contains_tracked_content(source):
+            append_event(event_log, {"event": "skipped_recheck", "source": str(source)})
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists() or target.is_symlink():
@@ -289,9 +310,16 @@ def purge_quarantine(base: Path, older_than_days: float, event_log: Path) -> tup
     for run_directory in base.iterdir():
         if not run_directory.is_dir() or run_directory.is_symlink():
             continue
-        if datetime.fromtimestamp(run_directory.stat().st_mtime, timezone.utc) > cutoff:
+        marker = run_directory / QUARANTINE_MARKER
+        try:
+            ownership = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
             continue
-        run_size = directory_size(run_directory)
+        if not isinstance(ownership, dict) or ownership.get("tool") != "my-py-tools.cleanup_work_artifacts":
+            continue
+        run_size, latest_mtime = directory_metrics(run_directory)
+        if datetime.fromtimestamp(latest_mtime, timezone.utc) > cutoff:
+            continue
         shutil.rmtree(run_directory)
         count += 1
         size += run_size
@@ -352,6 +380,11 @@ def main(argv: list[str] | None = None) -> int:
             )
             candidates.extend(root_candidates)
             skipped.extend(root_skipped)
+        unique_candidates: dict[str, Candidate] = {}
+        for candidate in candidates:
+            key = os.path.normcase(str(Path(candidate.path).resolve()))
+            unique_candidates.setdefault(key, candidate)
+        candidates = list(unique_candidates.values())
 
         manifest = {
             "schema_version": 1,
@@ -385,7 +418,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({key: result[key] for key in ("status", "moved_count", "candidate_bytes", "quarantine_directory")}, ensure_ascii=False, indent=2))
         return 0
     except (OSError, ValueError, subprocess.SubprocessError) as error:
-        append_event(event_log, {"event": "failed", "error": str(error)})
+        try:
+            append_event(event_log, {"event": "failed", "error": str(error)})
+        except OSError:
+            pass
         print(f"error: {error}", file=sys.stderr)
         return 2
 
