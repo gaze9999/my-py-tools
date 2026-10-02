@@ -1,0 +1,2 @@
+markdown/validate_structure.py text eol=lf
+scripts/export_markdown_validator.py text eol=lf

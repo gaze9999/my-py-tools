@@ -1,6 +1,6 @@
 # My Py Tools
 
-目前版本 `0.3.0`; 這是一套以 Python 3.10+ 執行的本機工具, 用於 Angular/Nx 程式碼盤點, 常用文件轉 Markdown, Markdown 安全更新, 開發產物清理與驗證證據整理
+目前版本 `0.3.1`; 這是一套以 Python 3.10+ 執行的本機工具, 用於 Angular/Nx 程式碼盤點, 常用文件轉 Markdown, Markdown 安全更新, 開發產物清理與驗證證據整理
 
 工具依用途分在不同資料夾, 從 repository 根目錄以 `python -m <分類>.<工具>` 執行, 輸入與輸出路徑由 CLI 提供或從明確輸入與目前目錄安全推導, 不依賴 `.env` 綁定特定專案或個人路徑
 

@@ -53,6 +53,21 @@ class StructureTests(unittest.TestCase):
             result = subprocess.run([sys.executable, "-I", "-S", str(script), str(document)], cwd=root, capture_output=True, text=True)
             self.assertEqual(result.returncode, 2)
 
+    def test_source_and_snapshot_line_endings_are_portable(self):
+        expected = export.snapshot()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "markdown").mkdir()
+            source = (ROOT / "markdown/validate_structure.py").read_bytes().replace(b"\r\n", b"\n")
+            (root / "markdown/validate_structure.py").write_bytes(source.replace(b"\n", b"\r\n"))
+            (root / "pyproject.toml").write_bytes((ROOT / "pyproject.toml").read_bytes())
+            self.assertEqual(export.snapshot(root), expected)
+            target = root / "snapshot.py"
+            target.write_bytes(expected.replace(b"\n", b"\r\n"))
+            before = target.read_bytes()
+            self.assertEqual(export.main(["--output", str(target), "--check"]), 0)
+            self.assertEqual(target.read_bytes(), before)
+
     def test_export_check_rejects_changed_snapshot_without_writing(self):
         with tempfile.TemporaryDirectory() as temporary:
             script = Path(temporary) / "standalone.py"

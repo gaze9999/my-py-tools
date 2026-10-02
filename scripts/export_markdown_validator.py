@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def snapshot(root: Path = ROOT) -> bytes:
-    source = (root / "markdown/validate_structure.py").read_bytes()
+    source = (root / "markdown/validate_structure.py").read_bytes().replace(b"\r\n", b"\n")
     match = re.search(r'(?m)^version\s*=\s*"([^"]+)"\s*$', (root / "pyproject.toml").read_text(encoding="utf-8"))
     if not match:
         raise ValueError("Package version not found")
@@ -23,7 +23,7 @@ def snapshot(root: Path = ROOT) -> bytes:
         "# GENERATED - DO NOT EDIT; use scripts/export_markdown_validator.py\n"
         "# Canonical source: my-py-tools/markdown/validate_structure.py\n"
         f"# Package: my-py-document-core {match.group(1)}; API_VERSION=1\n"
-        f"# Source SHA-256: {checksum}\n"
+        f"# Source SHA-256 (LF): {checksum}\n"
     ).encode("ascii")
     body = source.split(b"\n", 1)[1] if source.startswith(b"#!") else source
     return banner + body
@@ -41,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
         expected = snapshot()
         before = output.read_bytes() if output.exists() else None
         if args.check:
-            if before != expected:
+            if before is None or before.replace(b"\r\n", b"\n") != expected:
                 print("FAIL: standalone snapshot differs from canonical source")
                 return 1
             print("PASS: standalone snapshot matches canonical source and package version")
