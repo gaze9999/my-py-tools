@@ -2,6 +2,6 @@
 
 API_VERSION = 1
 
-from . import extraction, matching, updates
+from . import extraction, matching, updates, validation
 
-__all__ = ["API_VERSION", "extraction", "matching", "updates"]
+__all__ = ["API_VERSION", "extraction", "matching", "updates", "validation"]

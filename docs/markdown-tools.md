@@ -48,3 +48,15 @@ python -m markdown.guarded_markdown_update --target-file history.md append histo
 預設寫入會在同一目錄使用暫存檔, 原子取代與逐位元組讀回檢查; 同步磁碟 placeholder 無法原子取代時, 可明確加上 `--in-place`; 工具會先建立備份, 受保護地寫入後再讀回核對, 成功才刪除備份, 失敗時保留備份路徑
 
 結束代碼 `0` 表示檢查, 無變更, dry-run 或已驗證寫入完成; `2` 表示 SHA 已過期, 標題或項目規格不符, 路徑或 I/O 錯誤
+
+## `markdown.validate_structure`
+
+```powershell
+python -m markdown.validate_structure document.md
+```
+
+唯讀檢查 ATX 標題跳號, fenced code block, 行尾空白與選用版本; 兩空白 hard break 合法, 缺少版本僅 INFO, 無標題與行尾空白僅 WARN. 這是有限結構檢查, 不是完整 Markdown parser, 不強加風格; CLI 使用 English / ASCII, 來源非 ASCII 字元以 escape 顯示
+
+結束代碼 0 為無結構錯誤 (可含 WARN), 1 為層級或 fence 錯誤, 2 為參數或 UTF-8 檔案無法讀取. API `my_py_document_core.validation.analyze(text)` 回傳 checks, failures, warnings
+
+此 module 為 standalone Skill validator 單一維護來源; 不手改 generated snapshot. 使用 `python scripts/export_markdown_validator.py --output <snapshot-file>` 產生含套件版本及 source SHA-256 的 snapshot; `--check` 僅比對. Snapshot 只用標準函式庫, 無 repo 或 core 安裝相依

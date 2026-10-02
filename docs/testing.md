@@ -32,3 +32,12 @@ python -m documents.convert_to_markdown C:\path\spec.pdf --dry-run --extracted-a
 ```
 
 測試通過只代表這些明確案例, 不表示未提供的文件版面, OCR, Angular 動態中繼資料或遠端 Git 操作已驗證
+
+Markdown validator focused checks:
+
+```powershell
+python -m unittest discover -s tests -p test_validate_structure.py -v
+python -m markdown.validate_structure --help
+```
+
+涵蓋標題跳號, fence closing, hard break, 版本 INFO, exit codes, `-I -S` standalone 執行及 snapshot 產生一致性; 不代表所有 Markdown syntax 已驗證

@@ -8,7 +8,7 @@
 
 ```text
 python -m pip wheel --no-deps --no-build-isolation --wheel-dir /absolute/wheels .
-python -m pip install /absolute/wheels/my_py_document_core-0.2.0-py3-none-any.whl
+python -m pip install /absolute/wheels/my_py_document_core-0.2.1-py3-none-any.whl
 ```
 
 不是 editable install; 安裝後修改, 改名或搬移原 repo 都不會改變既有 runtime 的程式; 核心更新時重新建置 wheel, 檢查 SHA-256 與相容性後再安裝到需要更新的環境
@@ -20,7 +20,7 @@ wheel 只納入文件, Markdown 與 shared 的 Python 核心, 不包含 Angular,
 ```python
 from pathlib import Path
 from datetime import datetime
-from my_py_document_core import API_VERSION, extraction, matching, updates
+from my_py_document_core import API_VERSION, extraction, matching, updates, validation
 
 assert API_VERSION == 1
 source = Path("/absolute/documents/spec.txt")
@@ -39,6 +39,7 @@ print(result.content)
 | `matching.locate_extracts` | 依來源路徑與 SHA-256 尋找 current, stale 或候選 Markdown 抽出版 |
 | `updates.read_target`, `headings`, `section` | 讀取 Markdown, 定位章節 |
 | `updates.prepare`, `sha`, `write_guarded` | 準備內容, 比對 hash, 執行原子寫入與 readback |
+| `validation.analyze(text)` | 唯讀檢查有限的 Markdown ATX 標題與 fence, 回傳 checks, failures, warnings; 不宣稱完整 Markdown parser |
 
 原生 PDF, Office 擷取需要相關選用套件, OCR 由 Local Documents MCP 另外提供; API 不自行掃描 repo, 啟動 MCP, 取得 credentials 或授權寫入
 
