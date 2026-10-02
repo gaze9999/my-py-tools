@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import os
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -30,6 +32,15 @@ def fake_wheel(name: str, version: str) -> bytes:
 
 
 class ReleaseToolTests(unittest.TestCase):
+    def test_direct_entrypoint_ignores_external_scripts_namespace(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            Path(temporary, "scripts.py").write_text("unrelated = True\n", encoding="utf-8")
+            environment = dict(os.environ, PYTHONPATH=temporary)
+            result = subprocess.run([sys.executable, str(SCRIPTS / "release.py"), "--help"], env=environment, cwd=temporary, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("prepare", result.stdout)
+
+
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

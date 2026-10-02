@@ -12,9 +12,9 @@ import subprocess
 import sys
 import zipfile
 
-try:
+if __package__:
     from scripts import prepare_release
-except ModuleNotFoundError:
+else:
     import prepare_release
 
 
