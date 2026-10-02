@@ -9,7 +9,13 @@ import time
 import unittest
 
 from gui.catalog import EXCLUDED_MODULES, TOOLS, TOOLS_BY_ID, ToolSpec, discover_tools
-from gui.launcher import GuiServer, ProcessManager, directory_payload, split_cli_args
+from gui.launcher import (
+    ProcessManager,
+    SUPPORTED_DOCUMENT_SUFFIXES,
+    append_arguments,
+    gui_defaults,
+    split_cli_args,
+)
 from shared.version import repository_version
 
 
@@ -24,7 +30,13 @@ class GuiCatalogTests(unittest.TestCase):
                 self.assertIsNotNone(importlib.util.find_spec(tool.module))
 
     def test_repository_version_is_valid(self) -> None:
-        self.assertEqual(repository_version(), "0.2.0")
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            (root / "VERSION").write_text("0.3.0\n", encoding="utf-8")
+            self.assertEqual(repository_version(root), "0.3.0")
+            (root / "VERSION").write_text("invalid\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                repository_version(root)
 
     def test_new_main_module_is_discovered_without_catalog_edit(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -67,29 +79,21 @@ class GuiCatalogTests(unittest.TestCase):
             ["--text", "hello world", "--json"],
         )
 
-    def test_directory_payload_lists_directories_before_files(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory)
-            (root / "folder").mkdir()
-            (root / "sample.txt").write_text("sample", encoding="utf-8")
-            payload = directory_payload(str(root))
+    def test_dragged_document_paths_are_appended_as_cli_arguments(self) -> None:
+        paths = [r"C:\source files\spec.docx", r"C:\source files\api.xlsx"]
+        value = append_arguments("--dry-run", paths)
 
-            self.assertEqual(payload["path"], str(root.resolve()))
-            self.assertEqual(
-                [entry["name"] for entry in payload["entries"]],
-                ["folder", "sample.txt"],
-            )
-            self.assertTrue(payload["entries"][0]["is_directory"])
+        self.assertEqual(split_cli_args(value), ["--dry-run", *paths])
+        self.assertEqual(
+            SUPPORTED_DOCUMENT_SUFFIXES,
+            {".pdf", ".xlsx", ".docx", ".pptx", ".csv", ".txt"},
+        )
 
     def test_dropped_files_preselect_document_conversion(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             source = Path(temporary_directory, "source document.docx")
             source.touch()
-            server = GuiServer(("127.0.0.1", 0), "test-token", [source.resolve()])
-            try:
-                defaults = server.defaults()
-            finally:
-                server.server_close()
+            defaults = gui_defaults([source.resolve()])
 
             self.assertEqual(defaults["tool_id"], "document-to-markdown")
             self.assertEqual(split_cli_args(str(defaults["args"])), [str(source.resolve())])

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import ast
 from dataclasses import asdict, dataclass
+import json
 import os
 from pathlib import Path
 
+from gui.runtime import is_bundled, resource_root
+
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-EXCLUDED_FOLDERS = {"gui", "mcp_tools", "shared", "tests"}
+EXCLUDED_FOLDERS = {"gui", "mcp_tools", "shared", "tests", "build", "dist", "packages", "src"}
 EXCLUDED_MODULES: set[str] = set()
 CATEGORY_NAMES = {
     "angular": "Angular / Nx",
@@ -31,9 +34,22 @@ class ToolSpec:
     description: str
     example_args: str = ""
     warning: str = ""
+    purpose: str = ""
+    inputs: str = ""
+    outputs: str = ""
+    requirements: str = ""
+    source_only: bool = False
 
-    def payload(self) -> dict[str, str]:
-        return asdict(self)
+    def payload(self) -> dict[str, object]:
+        details = _TOOL_DETAILS.get(self.id, {})
+        return {
+            **asdict(self),
+            "purpose": self.purpose or details.get("purpose", self.description),
+            "inputs": self.inputs or details.get("inputs", "依工具參數選擇檔案, 資料夾或文字"),
+            "outputs": self.outputs or details.get("outputs", "結果顯示於執行輸出區; 寫入行為依 CLI 參數決定"),
+            "requirements": self.requirements or details.get("requirements", "使用內建 Python 核心"),
+            "source_only": self.source_only or self.module.startswith("scripts."),
+        }
 
 
 _OVERRIDES = (
@@ -176,6 +192,93 @@ _OVERRIDES = (
 
 _OVERRIDES_BY_MODULE = {tool.module: tool for tool in _OVERRIDES}
 
+_TOOL_DETAILS = {
+    "component-inventory": {
+        "purpose": "接手或重整 Angular/Nx 專案時, 快速掌握元件位置與公開識別資訊",
+        "inputs": "Nx 或 Angular workspace 根目錄",
+        "outputs": "元件, selector, template, style 與 custom element 清單; 可輸出 JSON",
+    },
+    "form-contract-check": {
+        "purpose": "修改表單前核對 TypeScript 與 HTML 是否符合已整理的欄位規格",
+        "inputs": "專案根目錄與 JSON 欄位規格檔",
+        "outputs": "缺少, 多餘或不一致的 form control 與 formControlName 報告",
+    },
+    "generator-preflight": {
+        "purpose": "執行 generator 前先避免 identifier, selector 或檔名撞名",
+        "inputs": "專案根目錄與預計使用的 identifier / selector",
+        "outputs": "衝突候選與來源位置; 不會建立或修改專案檔案",
+    },
+    "change-impact-report": {
+        "requirements": "需安裝 Git, 並選擇 Git repository",
+        "purpose": "Review 或提交前快速整理目前 Git 變更可能影響的公開介面",
+        "inputs": "Git repository 根目錄",
+        "outputs": "staged, unstaged, untracked 檔案與公開介面候選報告",
+    },
+    "document-to-markdown": {
+        "purpose": "把常用文件轉成可搜尋, 可比對且方便交給其他工具處理的 Markdown",
+        "inputs": "一個或多個 PDF, XLSX, DOCX, PPTX, CSV 或 TXT; 可直接拖曳",
+        "outputs": "預設在每個來源旁產生同名 .md, 並記錄來源與精確到秒的擷取時間",
+    },
+    "field-matrix": {
+        "purpose": "從已轉成 Markdown 的表格整理欄位名稱, 型別與說明, 方便規格核對",
+        "inputs": "包含表格的 Markdown 抽出版與輸出路徑",
+        "outputs": "欄位規格矩陣 Markdown",
+    },
+    "locate-markdown-extracts": {
+        "purpose": "同一來源有多份 Markdown 時, 找出目前版本與過期候選",
+        "inputs": "原始文件與要搜尋的 Markdown 根目錄",
+        "outputs": "依來源 metadata 與 SHA-256 分類的 current, stale 與候選清單",
+    },
+    "markdown-guard": {
+        "purpose": "只更新指定 Markdown 範圍, 並避免來源在處理期間被其他程序改動",
+        "inputs": "目標 Markdown, 操作名稱, 內容與選用的預期 SHA-256",
+        "outputs": "預覽或受保護的更新結果; 寫入後會讀回驗證",
+    },
+    "markdown-diff": {
+        "purpose": "比較兩份 Markdown 的結構差異, 不被單純空白或版面差異干擾",
+        "inputs": "修改前與修改後的 Markdown",
+        "outputs": "標題, 清單, 表格列與 SHA-256 差異",
+    },
+    "cleanup-artifacts": {
+        "purpose": "清理測試快取與中途產物前先預覽, 降低誤刪風險",
+        "inputs": "要檢查的專案根目錄與選用範圍",
+        "outputs": "預覽清單, 隔離結果或隔離區清理結果",
+    },
+    "rewrite-git-history": {
+        "requirements": "需安裝 Git, 並在目標 repository 設定 local user.name 與 user.email",
+        "purpose": "修正整個 Git 歷史中的 author / committer 身分, 僅適合明確需要重寫歷史時使用",
+        "inputs": "Git repository 與 repository local 身分設定",
+        "outputs": "備份 bundle 與重寫後的 refs; 執行時必須再次輸入 REWRITE",
+    },
+    "environment-consistency": {
+        "purpose": "確認兩份 Skills, runtime 或鏡像資料夾是否一致, 不直接同步內容",
+        "inputs": "來源與目標資料夾",
+        "outputs": "路徑, 大小與 SHA-256 差異報告",
+    },
+    "tokenizer": {
+        "purpose": "估算 Prompt, 文件或 API payload 的 token 使用量",
+        "inputs": "直接文字, 檔案或 stdin, 以及選用 encoding",
+        "outputs": "字元數與 token 數; 套件不可用時清楚標示 fallback 估算",
+    },
+    "validation-index": {
+        "purpose": "彙整既有驗證結果, 方便查找哪些項目已通過或仍未驗證",
+        "inputs": "包含 run-*/results.json 的驗證資料夾",
+        "outputs": "命令, 結果, 來源基準與未驗證項目的索引摘要",
+    },
+    "prepare-release": {
+        "requirements": "需完整 my-py-tools 原始碼, 開發用 Python, pip, setuptools 與 wheel",
+        "purpose": "發布前建立可核對的來源 ZIP, Python wheel 與 manifest",
+        "inputs": "my-py-tools source checkout, 版本與選用輸出資料夾",
+        "outputs": "Release assets 與 SHA-256 manifest; standalone GUI 需指向完整 source checkout",
+    },
+    "release": {
+        "requirements": "需完整 my-py-tools 原始碼, 開發用 Python, Git 與已登入的 GitHub CLI",
+        "purpose": "驗證已準備的 assets, 並在人工確認後發布 GitHub Release",
+        "inputs": "乾淨且已提交的 my-py-tools source checkout, Tag 與 GitHub CLI 登入狀態",
+        "outputs": "驗證結果或已發布的 GitHub Release; publish 會變更遠端狀態",
+    },
+}
+
 
 def _is_main_guard(test: ast.expr) -> bool:
     if not isinstance(test, ast.Compare) or len(test.ops) != 1 or not isinstance(test.ops[0], ast.Eq):
@@ -243,8 +346,13 @@ def discover_tools(root: Path = REPOSITORY_ROOT, warnings: list[str] | None = No
     return tuple(tools)
 
 
+def load_bundled_catalog() -> tuple[ToolSpec, ...]:
+    values = json.loads((resource_root() / "gui/resources/catalog.json").read_text(encoding="utf-8"))
+    return tuple(ToolSpec(**value) for value in values)
+
+
 DISCOVERY_WARNINGS: list[str] = []
-TOOLS = discover_tools(warnings=DISCOVERY_WARNINGS)
+TOOLS = load_bundled_catalog() if is_bundled() else discover_tools(warnings=DISCOVERY_WARNINGS)
 TOOLS_BY_ID = {tool.id: tool for tool in TOOLS}
 
 if len(TOOLS_BY_ID) != len(TOOLS):

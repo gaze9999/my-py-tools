@@ -1,4 +1,4 @@
-# documents/convert_to_markdown.py 與 text/tokenizer.py 的選用相依套件
+# 文件轉換與精確 token 計算的選用相依套件
 pypdf>=5,<7
 pdfplumber>=0.11,<1
 openpyxl>=3.1,<4

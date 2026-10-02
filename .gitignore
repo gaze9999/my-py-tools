@@ -7,6 +7,8 @@ __pycache__/
 .ruff_cache/
 .tox/
 .nox/
+node_modules/
+/gui/resources/
 
 # Test and coverage output
 .coverage

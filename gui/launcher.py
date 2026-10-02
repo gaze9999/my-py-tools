@@ -1,15 +1,13 @@
-"""Launch every supported command from a token-protected localhost Web GUI."""
+"""Launch every supported command from the React desktop GUI."""
 
 from __future__ import annotations
 
 import argparse
 import codecs
-import json
 import logging
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
-import secrets
 import shlex
 import shutil
 import signal
@@ -17,24 +15,21 @@ import subprocess
 import sys
 import threading
 import time
-from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 import uuid
-import webbrowser
 
 from gui.catalog import DISCOVERY_WARNINGS, TOOLS, TOOLS_BY_ID
-from shared.version import repository_version
-
-
+from gui.runtime import is_bundled, log_root, runner_path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-ASSET_ROOT = Path(__file__).resolve().with_name("web")
 OUTPUT_LIMIT = 2 * 1024 * 1024
-REQUEST_LIMIT = 64 * 1024
-LOG_ROOT = REPOSITORY_ROOT / ".gui"
+LOG_ROOT = log_root()
 LOG_PATH = LOG_ROOT / "my-py-tools-gui.log"
-REPOSITORY_VERSION = repository_version(REPOSITORY_ROOT)
+SUPPORTED_DOCUMENT_SUFFIXES = {".pdf", ".xlsx", ".docx", ".pptx", ".csv", ".txt"}
+
+
+def append_arguments(current: str, paths: tuple[str, ...] | list[str]) -> str:
+    addition = command_text(list(paths))
+    return " ".join(part for part in (current.strip(), addition) if part)
 
 
 def configure_logging() -> None:
@@ -210,33 +205,6 @@ def _terminate_windows_process_tree(root_pid: int) -> list[str]:
     return errors
 
 
-def directory_payload(value: str | None) -> dict[str, Any]:
-    raw = (value or str(REPOSITORY_ROOT)).strip()
-    path = Path(raw).expanduser().resolve()
-    if path.is_file():
-        path = path.parent
-    if not path.is_dir():
-        raise ValueError(f"Directory not found: {path}")
-    entries = []
-    try:
-        children = sorted(path.iterdir(), key=lambda item: (not item.is_dir(), item.name.casefold()))
-    except OSError as exc:
-        raise ValueError(f"Unable to list directory: {exc}") from exc
-    for child in children[:500]:
-        try:
-            is_directory = child.is_dir()
-        except OSError:
-            continue
-        entries.append({"name": child.name, "path": str(child), "is_directory": is_directory})
-    parent = path.parent if path.parent != path else None
-    return {
-        "path": str(path),
-        "parent": str(parent) if parent else None,
-        "entries": entries,
-        "truncated": len(children) > 500,
-    }
-
-
 class ProcessManager:
     def __init__(self) -> None:
         self.lock = threading.RLock()
@@ -259,13 +227,31 @@ class ProcessManager:
         cwd = Path(cwd_value).expanduser().resolve()
         if not cwd.is_dir():
             raise ValueError(f"Working directory not found: {cwd}")
-        executable = resolve_executable(python_value)
-        command = [str(executable), "-u", "-m", tool.module, *arguments]
+        source_only = tool.payload()["source_only"]
+        if is_bundled() and source_only and arguments not in (["--help"], ["-h"]):
+            if not python_value:
+                raise ValueError("此開發工具需要選擇完整 my-py-tools 原始碼目錄與開發用 Python")
+            if not (cwd / "VERSION").is_file() or not (cwd / "scripts/release.py").is_file():
+                raise ValueError("工作目錄需選擇完整的 my-py-tools 原始碼 repository")
+            executable = resolve_executable(python_value)
+            command = [str(executable), "-u", "-m", tool.module, *arguments]
+        elif is_bundled():
+            runner = runner_path()
+            if not runner.is_file():
+                raise ValueError(f"Bundled tool runner not found: {runner}")
+            command = [str(runner), tool.module, *arguments]
+        else:
+            executable = resolve_executable(python_value)
+            command = [str(executable), "-u", "-m", tool.module, *arguments]
         environment = os.environ.copy()
-        current_python_path = environment.get("PYTHONPATH")
-        environment["PYTHONPATH"] = str(REPOSITORY_ROOT) + (
-            os.pathsep + current_python_path if current_python_path else ""
-        )
+        if not is_bundled():
+            current_python_path = environment.get("PYTHONPATH")
+            environment["PYTHONPATH"] = str(REPOSITORY_ROOT) + (
+                os.pathsep + current_python_path if current_python_path else ""
+            )
+        else:
+            environment.pop("PYTHONPATH", None)
+            environment.pop("PYTHONHOME", None)
         environment["PYTHONUTF8"] = "1"
         environment["PYTHONUNBUFFERED"] = "1"
         creation_flags = 0
@@ -350,7 +336,8 @@ class ProcessManager:
         with self.lock:
             if run_id and run_id != self.run_id:
                 raise ValueError("Run not found")
-            running = self.process is not None and self.process.poll() is None
+            # The capture thread must flush stdout and the exit code before reporting completion.
+            running = self.process is not None and self.finished_at is None
             return {
                 "run_id": self.run_id,
                 "running": running,
@@ -412,160 +399,17 @@ class ProcessManager:
         return self.snapshot(run_id)
 
 
-class GuiServer(ThreadingHTTPServer):
-    daemon_threads = True
-
-    def __init__(self, address: tuple[str, int], token: str, startup_files: list[Path] | None = None):
-        super().__init__(address, GuiRequestHandler)
-        self.token = token
-        self.manager = ProcessManager()
-        self.startup_files = startup_files or []
-
-    def defaults(self) -> dict[str, str | None]:
-        return {
-            "python": default_tool_python(),
-            "cwd": str(REPOSITORY_ROOT),
-            "tool_id": "document-to-markdown" if self.startup_files else None,
-            "args": command_text([str(path) for path in self.startup_files]),
-        }
-
-    def handle_error(self, request: object, client_address: tuple[str, int]) -> None:
-        logging.exception("Unhandled GUI request error from %s:%s", *client_address)
-
-
-class GuiRequestHandler(BaseHTTPRequestHandler):
-    server: GuiServer
-
-    def log_message(self, format: str, *args: object) -> None:
-        return
-
-    def _headers(self, content_type: str, length: int, status: HTTPStatus = HTTPStatus.OK) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(length))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header(
-            "Content-Security-Policy",
-            "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:",
-        )
-        self.end_headers()
-
-    def _bytes(self, data: bytes, content_type: str, status: HTTPStatus = HTTPStatus.OK) -> None:
-        self._headers(content_type, len(data), status)
-        self.wfile.write(data)
-
-    def _json(self, value: object, status: HTTPStatus = HTTPStatus.OK) -> None:
-        self._bytes(
-            json.dumps(value, ensure_ascii=False).encode("utf-8"),
-            "application/json; charset=utf-8",
-            status,
-        )
-
-    def _authorized(self, query: dict[str, list[str]]) -> bool:
-        supplied = self.headers.get("X-GUI-Token") or (query.get("token") or [""])[0]
-        return secrets.compare_digest(supplied, self.server.token)
-
-    def _require_api_token(self, query: dict[str, list[str]]) -> bool:
-        if self._authorized(query):
-            return True
-        self._json({"error": "Unauthorized"}, HTTPStatus.FORBIDDEN)
-        return False
-
-    def _asset(self, name: str, content_type: str) -> None:
-        try:
-            data = (ASSET_ROOT / name).read_bytes()
-        except OSError:
-            self._json({"error": "Asset not found"}, HTTPStatus.NOT_FOUND)
-            return
-        self._bytes(data, content_type)
-
-    def do_GET(self) -> None:
-        parsed = urlparse(self.path)
-        query = parse_qs(parsed.query)
-        if parsed.path == "/":
-            if not self._authorized(query):
-                self._bytes(b"Forbidden", "text/plain; charset=utf-8", HTTPStatus.FORBIDDEN)
-                return
-            self._asset("index.html", "text/html; charset=utf-8")
-            return
-        if parsed.path == "/app.js":
-            self._asset("app.js", "text/javascript; charset=utf-8")
-            return
-        if parsed.path == "/style.css":
-            self._asset("style.css", "text/css; charset=utf-8")
-            return
-        if not parsed.path.startswith("/api/") or not self._require_api_token(query):
-            if not parsed.path.startswith("/api/"):
-                self._json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
-            return
-        try:
-            if parsed.path == "/api/tools":
-                self._json(
-                    {
-                        "tools": [tool.payload() for tool in TOOLS],
-                        "version": REPOSITORY_VERSION,
-                        "defaults": self.server.defaults(),
-                        "discovery_warnings": DISCOVERY_WARNINGS,
-                    }
-                )
-            elif parsed.path == "/api/status":
-                run_id = (query.get("run_id") or [None])[0]
-                self._json(self.server.manager.snapshot(run_id))
-            elif parsed.path == "/api/files":
-                self._json(directory_payload((query.get("path") or [None])[0]))
-            else:
-                self._json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
-        except ValueError as exc:
-            self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
-
-    def _body(self) -> dict[str, Any]:
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-        except ValueError as exc:
-            raise ValueError("Invalid Content-Length") from exc
-        if not 0 < length <= REQUEST_LIMIT:
-            raise ValueError("Invalid request size")
-        try:
-            value = json.loads(self.rfile.read(length).decode("utf-8"))
-        except (UnicodeError, json.JSONDecodeError) as exc:
-            raise ValueError("Invalid JSON request") from exc
-        if not isinstance(value, dict):
-            raise ValueError("JSON request must be an object")
-        return value
-
-    def do_POST(self) -> None:
-        parsed = urlparse(self.path)
-        query = parse_qs(parsed.query)
-        if not parsed.path.startswith("/api/") or not self._require_api_token(query):
-            if not parsed.path.startswith("/api/"):
-                self._json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
-            return
-        try:
-            body = self._body()
-            if parsed.path == "/api/run":
-                result = self.server.manager.start(
-                    str(body.get("tool_id", "")),
-                    str(body.get("args", "")),
-                    str(body.get("cwd", "")),
-                    str(body.get("python", "")),
-                )
-            elif parsed.path == "/api/input":
-                result = self.server.manager.send_input(
-                    str(body.get("run_id", "")), str(body.get("value", ""))
-                )
-            elif parsed.path == "/api/stop":
-                result = self.server.manager.stop(str(body.get("run_id", "")) or None)
-            elif parsed.path == "/api/shutdown":
-                result = {"status": "closing"}
-                self.server.manager.stop()
-                threading.Thread(target=self.server.shutdown, daemon=True).start()
-            else:
-                self._json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
-                return
-            self._json(result)
-        except ValueError as exc:
-            self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+def gui_defaults(startup_files: list[Path] | None = None) -> dict[str, object]:
+    files = startup_files or []
+    working_directory = files[0].parent if files else (Path.home() if is_bundled() else REPOSITORY_ROOT)
+    return {
+        "python": "" if is_bundled() else default_tool_python(),
+        "cwd": str(working_directory),
+        "tool_id": "document-to-markdown" if files else None,
+        "args": command_text([str(path) for path in files]),
+        "files": [str(path) for path in files],
+        "bundled": is_bundled(),
+    }
 
 
 class GuiArgumentParser(argparse.ArgumentParser):
@@ -575,13 +419,12 @@ class GuiArgumentParser(argparse.ArgumentParser):
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = GuiArgumentParser(description=__doc__)
-    parser.add_argument("--port", type=int, default=0, help="Local port; 0 selects an available port")
-    parser.add_argument("--no-browser", action="store_true", help="Print the URL without opening a browser")
+    parser.add_argument("--smoke-test", action="store_true", help="Verify the desktop bridge and then close")
     parser.add_argument(
         "files",
         nargs="*",
         type=Path,
-        help="Documents dropped on launch-gui.cmd; preloaded into the Markdown converter",
+        help="Documents dropped on the launcher; preloaded into the Markdown converter",
     )
     return parser.parse_args(argv)
 
@@ -597,30 +440,17 @@ def main(argv: list[str] | None = None) -> int:
         args = parse_args(argv)
     except ValueError as exc:
         return startup_error(f"invalid GUI arguments: {exc}")
-    if not 0 <= args.port <= 65535:
-        return startup_error("--port must be between 0 and 65535")
     startup_files = [path.expanduser().resolve() for path in args.files]
     missing = [str(path) for path in startup_files if not path.is_file()]
     if missing:
         return startup_error(f"input file not found: {missing[0]}")
-    token = secrets.token_urlsafe(24)
     try:
-        server = GuiServer(("127.0.0.1", args.port), token, startup_files)
-    except OSError as exc:
-        return startup_error(f"unable to start local GUI server: {exc}")
-    port = server.server_address[1]
-    url = f"http://127.0.0.1:{port}/?token={token}"
-    console_message(f"My Py Tools GUI started: {url} pid={os.getpid()}")
-    if not args.no_browser:
-        threading.Timer(0.25, lambda: webbrowser.open(url)).start()
-    try:
-        server.serve_forever(poll_interval=0.25)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        server.manager.stop()
-        server.server_close()
-    return 0
+        from gui.webview_app import run_app
+
+        console_message(f"My Py Tools GUI started: pywebview pid={os.getpid()}")
+        return run_app(gui_defaults(startup_files), smoke_test=args.smoke_test)
+    except (ImportError, OSError, RuntimeError) as exc:
+        return startup_error(f"unable to start desktop GUI: {exc}")
 
 
 if __name__ == "__main__":

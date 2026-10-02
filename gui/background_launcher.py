@@ -7,9 +7,10 @@ from pathlib import Path
 import sys
 import traceback
 
+from gui.runtime import log_root
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-STARTUP_LOG = REPOSITORY_ROOT / ".gui" / "startup-error.log"
+
+STARTUP_LOG = log_root() / "startup-error.log"
 
 
 def report_startup_error(error: BaseException) -> None:

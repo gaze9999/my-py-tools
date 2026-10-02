@@ -1,1 +1,1 @@
-"""Local browser GUI for the command-line tools."""
+"""React and pywebview desktop GUI for the command-line tools."""

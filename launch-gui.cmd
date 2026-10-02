@@ -1,25 +1,18 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-where python >nul 2>nul
+where pythonw >nul 2>nul
 if not errorlevel 1 (
-  python -m gui.launcher %*
-  goto result
+  start "" pythonw "%~dp0launch-gui.pyw" %*
+  exit /b 0
 )
 
-where py >nul 2>nul
+where pyw >nul 2>nul
 if not errorlevel 1 (
-  py -3 -m gui.launcher %*
-  goto result
+  start "" pyw -3 "%~dp0launch-gui.pyw" %*
+  exit /b 0
 )
 
-echo Python 3.10 or later was not found in PATH.
+echo A Python 3.10+ windowed launcher (pythonw or pyw) was not found in PATH.
 pause
 exit /b 1
-
-:result
-if errorlevel 1 (
-  echo.
-  echo GUI failed to start. Review the error above and try again.
-  pause
-)

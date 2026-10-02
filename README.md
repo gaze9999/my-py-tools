@@ -1,12 +1,12 @@
 # My Py Tools
 
-目前版本 `0.2.0`; 這是一套以 Python 3.10+ 執行的本機工具, 用於 Angular/Nx 程式碼盤點, 常用文件轉 Markdown, Markdown 安全更新, 開發產物清理與驗證證據整理
+目前版本 `0.3.0`; 這是一套以 Python 3.10+ 執行的本機工具, 用於 Angular/Nx 程式碼盤點, 常用文件轉 Markdown, Markdown 安全更新, 開發產物清理與驗證證據整理
 
 工具依用途分在不同資料夾, 從 repository 根目錄以 `python -m <分類>.<工具>` 執行, 輸入與輸出路徑由 CLI 提供或從明確輸入與目前目錄安全推導, 不依賴 `.env` 綁定特定專案或個人路徑
 
 ## 安裝
 
-大多數工具只使用 Python 標準函式庫, 文件抽取與精確 token 計算需安裝選用套件
+CLI 工具的文件抽取與精確 token 計算需安裝選用套件
 
 ```powershell
 python -m pip install --requirement .\requirements.txt
@@ -25,19 +25,21 @@ python -m pip install --requirement .\requirements.txt
 | 精確 token 計算 | `tiktoken`, 缺少或 encoding 無效時自動改用估算 |
 | CSV, TXT 與其他工具 | Python 標準函式庫 |
 
+從原始碼執行 GUI 時另外安裝 `requirements-gui.txt`; 一般使用者可下載已包含 Python 執行環境的 Windows 或 macOS 發行包
+
 ## 資料夾與工具
 
 | 資料夾 | 工具 | 詳細文件 |
 | --- | --- | --- |
 | `angular/` | Nx 元件盤點, 表單欄位規格檢查, generator 衝突預檢, Git 變更影響報告 | [Angular 與 Nx 工具](docs/angular-tools.md) |
 | `documents/` | PDF, XLSX, DOCX, PPTX, CSV, TXT 轉 Markdown, 欄位矩陣擷取, Markdown 抽出版定位 | [文件處理工具](docs/document-tools.md) |
-| `markdown/` | Markdown 結構差異, SHA-256 保護更新 | [Markdown 工具](docs/markdown-tools.md) |
+| `markdown/` | Markdown 結構檢查與差異, SHA-256 保護更新 | [Markdown 工具](docs/markdown-tools.md) |
 | `maintenance/` | 快取隔離清理, 環境一致性檢查, Git 歷史身分改寫 | [維護工具](docs/maintenance-tools.md) |
 | `text/` | token 計數與備援估算 | [文字與驗證工具](docs/text-validation-tools.md) |
 | `validation/` | `run-*/results.json` 驗證證據索引 | [文字與驗證工具](docs/text-validation-tools.md) |
 | `shared/` | 可容錯的 `.env` 變數讀取, 版本與核心載入 | [設定與備援機制](docs/configuration.md) |
 | `packages/` | 用途獨立的可重用 Python 核心套件 | [工作區檢查工具包](docs/python-workspace-core.md) |
-| `gui/` | 自動探索工具的本機 Web GUI | [本機 GUI](docs/gui.md) |
+| `gui/` | React 桌面 GUI, Python 工具橋接與 Windows/macOS 發行包建置 | [本機 GUI](docs/gui.md) |
 | `tests/` | 標準函式庫 `unittest` 測試 | [測試方式](docs/testing.md) |
 
 ## 可重用 Python 工具包
@@ -46,13 +48,20 @@ python -m pip install --requirement .\requirements.txt
 
 ## 快速開始
 
-Windows 可雙擊 `launch-gui.vbs` 在背景開啟本機 GUI, 不會出現命令提示字元視窗; `launch-gui.cmd` 保留為需要查看啟動錯誤時的診斷入口
+一般使用者請下載 Windows 或 macOS 發行包, 解壓後開啟 `MyPyTools.exe` 或 `My Py Tools.app`; 發行包內含 Python 與工具相依套件, 不需要另外安裝 Python; Windows 需有 Microsoft Edge WebView2 Runtime, macOS 使用系統 WebKit
+
+開發者可從原始碼啟動; 先安裝 Python 3.10+ 與 Node.js 22+, 再安裝相依套件並建置 React 畫面; Windows 開發版可直接執行 `launch-gui.pyw` 在背景啟動, macOS 可由 Terminal 執行 `python -m gui.launcher`
 
 ```powershell
+python -m pip install --requirement .\requirements-gui.txt
+npm --prefix .\gui\frontend ci
+npm --prefix .\gui\frontend run build
 python -m gui.launcher
 ```
 
-也可將單一或多個支援文件直接拖到 `launch-gui.vbs`; GUI 會自動選取來源文件擷取工具並帶入路徑, 確認後執行即可在各來源旁產生同名 `.md`; `local_documents` 的 MCP server, 操作與驗證由 `codex-setup` 管理, 不放入本 GUI; 詳細操作見 [本機 GUI](docs/gui.md)
+要在目前作業系統建置獨立發行包, 再安裝 `requirements-build.txt` 並執行 `python -m gui.packaging.build`; Windows 需在 Windows 建置, macOS 需在 Mac 建置
+
+GUI 支援多文件拖曳, 預設在來源旁產生同名 `.md`; 也可指定輸出資料夾, 合併成單一 Markdown, 或先執行 dry-run; 每項工具在 GUI 都會說明用途, 輸入, 輸出與執行前注意事項; `local_documents` MCP 仍由 `codex-setup` 管理; 詳細操作與新增工具方式見 [本機 GUI](docs/gui.md)
 
 單一文件輸入, 預設在來源旁產生同名 `.md`
 
