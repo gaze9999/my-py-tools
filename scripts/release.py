@@ -74,8 +74,13 @@ def verify(tag: str, output_root: Path | None = None) -> list[Path]:
         if len(data) != item.get("size") or prepare_release.digest(data) != item.get("sha256"):
             raise ValueError(f"Release asset changed: {path.name}")
         if path.name == source_name:
-            if data != prepare_release.source_archive(source_files, tag):
-                raise ValueError("Source archive does not match the current repository")
+            expected_files = {f"my-py-tools-{tag}/{name}": content for name, (_path, content) in source_files.items()}
+            with zipfile.ZipFile(path) as archive:
+                if (archive.testzip() is not None or len(archive.namelist()) != len(expected_files)
+                        or set(archive.namelist()) != set(expected_files)
+                        or any(((item.external_attr >> 16) & 0o170000) not in {0, 0o100000} for item in archive.infolist())
+                        or any(archive.read(name) != content for name, content in expected_files.items())):
+                    raise ValueError("Source archive does not match the current repository")
         elif path.suffix == ".whl":
             metadata = prepare_release.wheel_metadata(data)
             expected = manifest["packages"].get(metadata["name"])

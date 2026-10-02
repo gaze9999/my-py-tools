@@ -32,6 +32,27 @@ def fake_wheel(name: str, version: str) -> bytes:
 
 
 class ReleaseToolTests(unittest.TestCase):
+    def test_source_archive_verification_uses_contents_not_compression_bytes(self):
+        root = self.repo
+        with patch.object(prepare_release, "build_wheels", return_value=self.wheels):
+            result = prepare_release.prepare(root, "0.3.1", root / "dist")
+        folder = Path(result["output"])
+        source = folder / "my-py-tools-v0.3.1.zip"
+        with zipfile.ZipFile(source) as archive:
+            entries = [(item, archive.read(item.filename)) for item in archive.infolist()]
+        with zipfile.ZipFile(source, "w", compression=zipfile.ZIP_STORED) as archive:
+            for item, data in entries:
+                item.compress_type = zipfile.ZIP_STORED
+                archive.writestr(item, data)
+        marker = folder / prepare_release.MANIFEST
+        manifest = json.loads(marker.read_text(encoding="utf-8"))
+        asset = next(a for a in manifest["assets"] if a["name"] == source.name)
+        asset.update(size=source.stat().st_size, sha256=prepare_release.digest(source.read_bytes()))
+        marker.write_text(json.dumps(manifest), encoding="utf-8")
+        with patch.object(release, "REPO", root):
+            self.assertEqual(len(release.verify("v0.3.1")), 3)
+
+
     def test_direct_entrypoint_ignores_external_scripts_namespace(self):
         with tempfile.TemporaryDirectory() as temporary:
             Path(temporary, "scripts.py").write_text("unrelated = True\n", encoding="utf-8")
