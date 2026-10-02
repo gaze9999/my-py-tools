@@ -25,7 +25,7 @@ python -m pip install --requirement .\requirements.txt
 | 精確 token 計算 | `tiktoken`, 缺少或 encoding 無效時自動改用估算 |
 | CSV, TXT 與其他工具 | Python 標準函式庫 |
 
-從原始碼執行 GUI 時另外安裝 `requirements-gui.txt`; 一般使用者可下載已包含 Python 執行環境的 Windows 或 macOS 發行包
+從原始碼執行 GUI 時另外安裝 `requirements-gui.txt`; Windows 使用者可下載已包含 Python 執行環境的發行包
 
 ## 資料夾與工具
 
@@ -48,7 +48,7 @@ python -m pip install --requirement .\requirements.txt
 
 ## 快速開始
 
-一般使用者請下載 Windows 或 macOS 發行包, 解壓後開啟 `MyPyTools.exe` 或 `My Py Tools.app`; 發行包內含 Python 與工具相依套件, 不需要另外安裝 Python; Windows 需有 Microsoft Edge WebView2 Runtime, macOS 使用系統 WebKit
+Windows 使用者可從 [Releases](https://github.com/gaze9999/my-py-tools/releases/latest) 下載 x64 發行包, 解壓後開啟 `MyPyTools.exe`; 包內含 Python 與工具相依套件, 需有 Microsoft Edge WebView2 Runtime. macOS 尚未提供預先建置的 app, 可依下方原始碼流程啟動或在 Mac 建置, GUI 使用系統 WebKit
 
 開發者可從原始碼啟動; 先安裝 Python 3.10+ 與 Node.js 22+, 再安裝相依套件並建置 React 畫面; Windows 開發版可直接執行 `launch-gui.pyw` 在背景啟動, macOS 可由 Terminal 執行 `python -m gui.launcher`
 
