@@ -30,6 +30,11 @@ nav small { font-size: 10px; color: #678577; } nav button.active { background: #
 .online-dot, .status i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
 .workspace { display: flex; flex-direction: column; min-width: 0; overflow: hidden; background: radial-gradient(ellipse at 90% 0%, #172d25 0, #0d151c 40%, #0b1117 70%); }
 header { height: 61px; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; padding: 0 29px; border-bottom: 1px solid #23313b; font-size: 11px; color: #98abb9; background: #101920bb; } header b { margin: 0 10px; color: #4b6172; }
+.header-controls { display: flex; align-items: center; gap: 14px; }
+.language-picker { display: flex; align-items: center; gap: 7px; }
+.language-picker select { width: auto; margin: 0; padding: 6px 8px; }
+nav button span { overflow-wrap: anywhere; }
+.actions, .argument-actions, .document-options { flex-wrap: wrap; }
 .status { display: flex; align-items: center; gap: 8px; padding: 7px 11px; border: 1px solid #314638; border-radius: 20px; color: #8edab0; background: #1b2d22; }.status.running { color: #efd395; border-color: #6a542c; background: #332c1c; }.status.running i { background: #efd395; }
 main { flex: 1; min-height: 0; overflow: auto; padding: 24px 30px 38px; }
 .hero { position: relative; margin-bottom: 20px; padding: 0 0 3px; }

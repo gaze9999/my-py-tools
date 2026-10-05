@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+import { categoryName, initialLanguage, saveLanguage, translate } from './i18n'
+import { localizeTool } from './tool-translations'
 
 const bridge = () => window.pywebview.api
 
@@ -18,8 +21,17 @@ function Icon({ name, size = 18 }) {
 }
 
 function App() {
+  const [language, setLanguage] = useState(() => {
+    try { return initialLanguage(window.localStorage) } catch { return 'zh-TW' }
+  })
+  const t = useCallback((key, values) => translate(language, key, values), [language])
+  useEffect(() => {
+    document.documentElement.lang = language
+    try { saveLanguage(window.localStorage, language) } catch { /* Use the session preference. */ }
+  }, [language])
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
+  const errorText = typeof error === 'string' ? t(error) : t(error.key, error.values)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('全部')
   const [toolId, setToolId] = useState('document-to-markdown')
@@ -32,7 +44,7 @@ function App() {
   const [dryRun, setDryRun] = useState(false)
   const [run, setRun] = useState(null)
   const [busy, setBusy] = useState(false)
-  const [status, setStatus] = useState('待命')
+  const [status, setStatus] = useState({ key: 'Ready' })
   const [output, setOutput] = useState('')
   const [stdin, setStdin] = useState('')
   const [dragging, setDragging] = useState(false)
@@ -41,11 +53,12 @@ function App() {
   const outputRef = useRef(null)
   const filesRef = useRef([])
   const running = Boolean(run?.running)
-  const tool = data?.tools.find((item) => item.id === toolId)
+  const tools = useMemo(() => (data?.tools || []).map((item) => localizeTool(language, item)), [data, language])
+  const tool = tools.find((item) => item.id === toolId)
   const isDocument = toolId === 'document-to-markdown'
-  const visible = (data?.tools || []).filter((item) =>
+  const visible = tools.filter((item) =>
     (category === '全部' || category === item.category) &&
-    [item.name, item.module, item.description, item.purpose].join(' ').toLowerCase().includes(query.trim().toLowerCase()),
+    [item.name, item.module, item.description, item.purpose, item.search_text].join(' ').toLowerCase().includes(query.trim().toLowerCase()),
   )
 
   useEffect(() => {
@@ -55,6 +68,7 @@ function App() {
         const result = await bridge().bootstrap()
         if (disposed) return
         setData(result)
+        setLanguage(result.defaults.language === 'en' ? 'en' : 'zh-TW')
         setCwd(result.defaults.cwd)
         setPython(result.defaults.python || '')
         setToolId(result.defaults.tool_id || 'document-to-markdown')
@@ -67,7 +81,7 @@ function App() {
     if (window.pywebview?.api) initialize()
     else window.addEventListener('pywebviewready', initialize, { once: true })
     const timeout = setTimeout(() => {
-      if (!window.pywebview?.api) setError('無法連接桌面執行環境, 請重新啟動應用程式')
+      if (!window.pywebview?.api) setError('Cannot connect to the desktop runtime. Restart the application')
     }, 12000)
     return () => {
       disposed = true
@@ -88,9 +102,9 @@ function App() {
         setToolId('document-to-markdown')
         setCategory('文件處理')
         setCustomArgs(false)
-        setStatus('已加入 ' + result.accepted.length + ' 個文件')
+        setStatus({ key: 'Added {count} documents', values: { count: result.accepted.length } })
       }
-      setError(result.rejected.length ? '已略過不支援或不存在的項目: ' + result.rejected.join(', ') : '')
+      setError(result.rejected.length ? { key: 'Skipped unsupported or missing items: {paths}', values: { paths: result.rejected.join(', ') } } : '')
     } catch (failure) { setError(String(failure.message || failure)) }
   }, [])
 
@@ -127,11 +141,11 @@ function App() {
         const result = await bridge().run_status(run.run_id)
         if (disposed) return
         setRun(result)
-        setOutput((result.output_truncated ? '[較早輸出已截斷]\n' : '') + result.output)
+        setOutput(result.output)
         if (result.running) timer = setTimeout(poll, 300)
-        else setStatus(result.exit_code === 0 ? '執行完成' : '執行失敗, exit code ' + result.exit_code)
+        else setStatus({ key: result.exit_code === 0 ? 'Completed' : 'Failed, exit code {code}', values: { code: result.exit_code } })
       } catch (failure) {
-        if (!disposed) { setError(String(failure.message || failure)); setStatus('無法取得執行結果') }
+        if (!disposed) { setError(String(failure.message || failure)); setStatus({ key: 'Unable to retrieve results' }) }
       }
     }
     poll()
@@ -148,6 +162,10 @@ function App() {
     catch (failure) { setError(String(failure.message || failure)) }
   }
   const chooseDocuments = () => action(async () => addDocuments(await bridge().choose_files(true)))
+  const changeLanguage = (value) => {
+    setLanguage(value)
+    action(() => bridge().set_language(value))
+  }
   const selectTool = (item) => {
     setToolId(item.id)
     setCategory(item.category)
@@ -168,67 +186,67 @@ function App() {
     setError('')
     try {
       if (!help && isDocument && !customArgs && (!files.length || (outputMode !== 'source' && !outputPath))) {
-        throw new Error(!files.length ? '請先選擇或拖入文件' : '請先選擇輸出位置')
+        throw new Error(!files.length ? 'Choose or drop documents first' : 'Choose an output location first')
       }
       const result = await bridge().start_tool(toolId, help ? '--help' : args, cwd, python)
       setOutput(result.output)
       setRun(result)
-      setStatus('執行中')
-    } catch (failure) { setError(String(failure.message || failure)); setStatus('啟動失敗') }
+      setStatus({ key: 'Running' })
+    } catch (failure) { setError(String(failure.message || failure)); setStatus({ key: 'Failed to start' }) }
     finally { setBusy(false) }
   }
 
-  if (!data || !tool) return <div className="loading"><div className="brand-mark"><Icon name="tools" size={30} /></div><h1>My Py Tools</h1><p>{error || '正在準備你的工具工作台...'}</p></div>
+  if (!data || !tool) return <div className="loading"><div className="brand-mark"><Icon name="tools" size={30} /></div><h1>My Py Tools</h1><p>{errorText || t("Preparing your tool workspace...")}</p></div>
 
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="brand"><div className="brand-mark"><Icon name="tools" size={23} /></div><div><strong>My Py Tools</strong><span>本機工具工作台</span></div></div>
-        <div className="search"><Icon name="search" /><input aria-label="搜尋工具" placeholder="搜尋工具或用途" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
-        <div className="section-label">工具分類 <span>{data.tools.length}</span></div>
-        <nav aria-label="用途分類">{['全部', ...data.categories].map((item) => <button key={item} onClick={() => selectCategory(item)} className={category === item ? 'active' : ''}><span>{item}</span><small>{item === '全部' ? data.tools.length : data.tools.filter((entry) => entry.category === item).length}</small></button>)}</nav>
-        <div className="section-label">工具清單</div>
-        <div className="tool-list">{visible.length ? visible.map((item) => <button key={item.id} className={toolId === item.id ? 'selected' : ''} onClick={() => selectTool(item)}><strong>{item.name}</strong><span>{item.description}</span></button>) : <p className="empty">沒有符合的工具</p>}</div>
-        <div className="sidebar-footer"><span className="online-dot" />在你的電腦處理<span>v{data.version}</span></div>
+        <div className="brand"><div className="brand-mark"><Icon name="tools" size={23} /></div><div><strong>My Py Tools</strong><span>{t("Local tool workspace")}</span></div></div>
+        <div className="search"><Icon name="search" /><input aria-label={t("Search tools")} placeholder={t("Search tools or use cases")} value={query} onChange={(event) => setQuery(event.target.value)} /></div>
+        <div className="section-label">{t('Tool categories')} <span>{data.tools.length}</span></div>
+        <nav aria-label={t("Categories by purpose")}>{['全部', ...data.categories].map((item) => <button key={item} onClick={() => selectCategory(item)} className={category === item ? 'active' : ''}><span>{categoryName(language, item)}</span><small>{item === '全部' ? data.tools.length : data.tools.filter((entry) => entry.category === item).length}</small></button>)}</nav>
+        <div className="section-label">{t("Tools")}</div>
+        <div className="tool-list">{visible.length ? visible.map((item) => <button key={item.id} className={toolId === item.id ? 'selected' : ''} onClick={() => selectTool(item)}><strong>{item.name}</strong><span>{item.description}</span></button>) : <p className="empty">{t("No matching tools")}</p>}</div>
+        <div className="sidebar-footer"><span className="online-dot" />{t("Processed on your computer")}<span>v{data.version}</span></div>
       </aside>
       <div className="workspace">
-        <header><span>工作台 <b>/</b> {tool.category}</span><span className={'status ' + (running ? 'running' : '')}><i />{status}</span></header>
+        <header><span>{t('Workspace')} <b>/</b> {categoryName(language, tool.category)}</span><div className="header-controls"><label className="language-picker">{t('Language')}<select aria-label={t('Language')} value={language} onChange={(event) => changeLanguage(event.target.value)}><option value="zh-TW">繁體中文</option><option value="en">English</option></select></label><span className={'status ' + (running ? 'running' : '')}><i />{t(status.key, status.values)}</span></div></header>
         <main onDragEnter={() => setDragging(true)} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragging(false) }} onDrop={() => setDragging(false)}>
-          <section className="hero"><div className="eyebrow">{tool.category}</div><h1>{tool.name}</h1><p>{tool.description}</p><code>{tool.module}</code></section>
+          <section className="hero"><div className="eyebrow">{categoryName(language, tool.category)}</div><h1>{tool.name}</h1><p>{tool.description}</p><code>{tool.module}</code></section>
           <section className="info-grid">
-            <div><span>什麼時候用</span><p>{tool.purpose}</p></div>
-            <div><span>需要提供</span><p>{tool.inputs}</p></div>
-            <div><span>你會得到</span><p>{tool.outputs}</p></div>
+            <div><span>{t("When to use")}</span><p>{tool.purpose}</p></div>
+            <div><span>{t("Inputs")}</span><p>{tool.inputs}</p></div>
+            <div><span>{t("Outputs")}</span><p>{tool.outputs}</p></div>
           </section>
-          {(tool.warning || tool.requirements !== '使用內建 Python 核心') && <div className="notice"><strong>使用前確認</strong><p>{tool.warning}{tool.warning && ' / '}{tool.requirements !== '使用內建 Python 核心' && tool.requirements}</p></div>}
-          {error && <div className="error" role="alert"><span>{error}</span><button aria-label="關閉錯誤訊息" onClick={() => setError('')}><Icon name="close" /></button></div>}
-          {(isDocument || dragging) && <section className={'drop-zone ' + (dragging ? 'dragging' : '')}><div className="drop-icon"><Icon name="arrow" size={25} /></div><div><strong>拖曳文件, 開始轉換</strong><p>PDF, XLSX, DOCX, PPTX, CSV, TXT <span>·</span> 支援多個檔案</p></div><button className="secondary" onClick={chooseDocuments}><Icon name="file" />選擇文件</button></section>}
+          {(tool.warning || !tool.builtin_requirements) && <div className="notice"><strong>{t("Before you run")}</strong><p>{tool.warning}{tool.warning && ' / '}{!tool.builtin_requirements && tool.requirements}</p></div>}
+          {error && <div className="error" role="alert"><span>{errorText}</span><button aria-label={t("Close error message")} onClick={() => setError('')}><Icon name="close" /></button></div>}
+          {(isDocument || dragging) && <section className={'drop-zone ' + (dragging ? 'dragging' : '')}><div className="drop-icon"><Icon name="arrow" size={25} /></div><div><strong>{t("Drop documents to convert")}</strong><p>PDF, XLSX, DOCX, PPTX, CSV, TXT <span>·</span> {t('Multiple files supported')}</p></div><button className="secondary" onClick={chooseDocuments}><Icon name="file" />{t("Choose documents")}</button></section>}
           {isDocument && <section className="card document-card">
-            <div className="card-title"><h2>來源文件 <small>{files.length}</small></h2>{files.length > 0 && <button className="text-button" onClick={() => setFiles([])}>清空</button>}</div>
-            {files.length ? <ul className="file-list">{files.map((file) => <li key={file}><Icon name="file" /><div><strong>{file.split(/[\\/]/).pop()}</strong><span title={file}>{file}</span></div><button aria-label={'移除 ' + file} onClick={() => setFiles((current) => current.filter((value) => value !== file))}><Icon name="close" size={16} /></button></li>)}</ul> : <div className="empty-files">文件會留在原位置, 轉換結果預設產生於來源旁</div>}
+            <div className="card-title"><h2>{t('Source documents')} <small>{files.length}</small></h2>{files.length > 0 && <button className="text-button" onClick={() => setFiles([])}>{t("Clear files")}</button>}</div>
+            {files.length ? <ul className="file-list">{files.map((file) => <li key={file}><Icon name="file" /><div><strong>{file.split(/[\\/]/).pop()}</strong><span title={file}>{file}</span></div><button aria-label={t('Remove {file}', { file })} onClick={() => setFiles((current) => current.filter((value) => value !== file))}><Icon name="close" size={16} /></button></li>)}</ul> : <div className="empty-files">{t("Source files stay in place. Markdown is saved beside each source by default")}</div>}
             <div className="document-options">
-              <label>輸出方式<select value={outputMode} onChange={(event) => { setOutputMode(event.target.value); setOutputPath('') }}><option value="source">各自輸出至來源旁</option><option value="directory">各自輸出至指定資料夾</option><option value="combine">合併成一個 Markdown</option></select></label>
-              <label className="check-label"><input type="checkbox" checked={dryRun} onChange={(event) => setDryRun(event.target.checked)} />只預覽, 不寫入檔案</label>
+              <label>{t("Output mode")}<select value={outputMode} onChange={(event) => { setOutputMode(event.target.value); setOutputPath('') }}><option value="source">{t("Save beside each source")}</option><option value="directory">{t("Save separately to a folder")}</option><option value="combine">{t("Combine into one Markdown file")}</option></select></label>
+              <label className="check-label"><input type="checkbox" checked={dryRun} onChange={(event) => setDryRun(event.target.checked)} />{t("Preview only, do not write files")}</label>
             </div>
-            {outputMode !== 'source' && <div className="input-row"><input aria-label="輸出位置" placeholder="選擇輸出位置" value={outputPath} onChange={(event) => setOutputPath(event.target.value)} /><button className="secondary" onClick={() => action(async () => { const value = outputMode === 'combine' ? await bridge().choose_save() : await bridge().choose_folder(); if (value) setOutputPath(value) })}><Icon name="folder" />瀏覽</button></div>}
+            {outputMode !== 'source' && <div className="input-row"><input aria-label={t("Output location")} placeholder={t("Choose output location")} value={outputPath} onChange={(event) => setOutputPath(event.target.value)} /><button className="secondary" onClick={() => action(async () => { const value = outputMode === 'combine' ? await bridge().choose_save() : await bridge().choose_folder(); if (value) setOutputPath(value) })}><Icon name="folder" />{t("Browse")}</button></div>}
           </section>}
           <section className="card">
-            <div className="card-title"><h2>執行設定</h2>{data.defaults.bundled && !tool.source_only && <span className="badge">使用內建執行環境</span>}</div>
+            <div className="card-title"><h2>{t("Run settings")}</h2>{data.defaults.bundled && !tool.source_only && <span className="badge">{t("Bundled runtime")}</span>}</div>
             <div className="settings-grid">
-              <label>工作目錄<div className="input-row"><input value={cwd} onChange={(event) => setCwd(event.target.value)} /><button className="icon-button" aria-label="選擇工作目錄" onClick={() => action(async () => { const value = await bridge().choose_folder(); if (value) setCwd(value) })}><Icon name="folder" /></button></div></label>
-              {(!data.defaults.bundled || tool.source_only) && <label>開發用 Python<div className="input-row"><input value={python} onChange={(event) => setPython(event.target.value)} placeholder="選擇 Python 執行檔" /><button className="icon-button" aria-label="選擇 Python" onClick={() => action(async () => { const value = await bridge().choose_python(); if (value) setPython(value) })}><Icon name="folder" /></button></div></label>}
+              <label>{t("Working directory")}<div className="input-row"><input value={cwd} onChange={(event) => setCwd(event.target.value)} /><button className="icon-button" aria-label={t("Choose working directory")} onClick={() => action(async () => { const value = await bridge().choose_folder(); if (value) setCwd(value) })}><Icon name="folder" /></button></div></label>
+              {(!data.defaults.bundled || tool.source_only) && <label>{t("Development Python")}<div className="input-row"><input value={python} onChange={(event) => setPython(event.target.value)} placeholder={t("Choose Python executable")} /><button className="icon-button" aria-label={t("Choose Python")} onClick={() => action(async () => { const value = await bridge().choose_python(); if (value) setPython(value) })}><Icon name="folder" /></button></div></label>}
             </div>
             <details open={!isDocument} className="advanced">
-              <summary>CLI 參數與範例 {isDocument && <span>進階設定</span>}</summary>
-              {isDocument && <label className="check-label"><input type="checkbox" checked={customArgs} onChange={(event) => setCustomArgs(event.target.checked)} />手動編輯參數, 暫停上方表單同步</label>}
-              <textarea aria-label="CLI 參數" value={args} readOnly={isDocument && !customArgs} onChange={(event) => setArgs(event.target.value)} placeholder="輸入參數, 或先查看 Help" />
-              <div className="argument-actions"><button className="text-button" onClick={() => action(async () => { const values = await bridge().choose_files(false); setArgs(await bridge().append_paths(args, values)); if (isDocument) setCustomArgs(true) })}>加入檔案路徑</button><button className="text-button" onClick={() => action(async () => { const value = await bridge().choose_folder(); if (value) { setArgs(await bridge().append_paths(args, [value])); if (isDocument) setCustomArgs(true) } })}>加入資料夾路徑</button><button className="text-button" onClick={() => { setArgs(tool.example_args); if (isDocument) setCustomArgs(true) }}>套用範例</button></div>
-              <p className="example">範例 <code>{tool.example_args || '請查看 Help'}</code></p>
+              <summary>{t('CLI arguments and examples')} {isDocument && <span>{t("Advanced settings")}</span>}</summary>
+              {isDocument && <label className="check-label"><input type="checkbox" checked={customArgs} onChange={(event) => setCustomArgs(event.target.checked)} />{t("Edit arguments manually, pause form synchronization")}</label>}
+              <textarea aria-label={t("CLI arguments")} value={args} readOnly={isDocument && !customArgs} onChange={(event) => setArgs(event.target.value)} placeholder={t("Enter arguments, or view Help first")} />
+              <div className="argument-actions"><button className="text-button" onClick={() => action(async () => { const values = await bridge().choose_files(false); setArgs(await bridge().append_paths(args, values)); if (isDocument) setCustomArgs(true) })}>{t("Add file paths")}</button><button className="text-button" onClick={() => action(async () => { const value = await bridge().choose_folder(); if (value) { setArgs(await bridge().append_paths(args, [value])); if (isDocument) setCustomArgs(true) } })}>{t("Add folder path")}</button><button className="text-button" onClick={() => { setArgs(tool.example_args); if (isDocument) setCustomArgs(true) }}>{t("Use example")}</button></div>
+              <p className="example">{t("Example")} <code>{tool.example_args || t("View Help for details")}</code></p>
             </details>
           </section>
-          <div className="actions"><button className="primary" disabled={busy || running} onClick={() => execute()}><Icon name="play" />{busy ? '啟動中...' : '執行工具'}</button><button className="secondary" disabled={busy || running} onClick={() => execute(true)}>查看 Help</button><button className="stop" disabled={!running} onClick={() => action(async () => { setStatus('停止中'); const result = await bridge().stop_tool(run.run_id); setRun(result); setOutput(result.output); setStatus('已停止') })}>停止</button><span>所有檔案都在本機處理</span></div>
-          {running && <div className="progress" role="progressbar" aria-label="工具執行中"><i /></div>}
-          <section className="card output-card"><div className="card-title"><h2><Icon name="terminal" />執行輸出</h2><div><button className="text-button" onClick={() => action(() => bridge().copy_text(output))}><Icon name="copy" size={15} />複製</button><button className="text-button" onClick={() => setOutput('')}>清除</button></div></div><pre ref={outputRef}>{output || '準備好了, 執行結果會顯示在這裡'}</pre><div className="input-row stdin"><input aria-label="互動輸入" disabled={!running} value={stdin} onChange={(event) => setStdin(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') action(async () => { await bridge().send_input(run.run_id, stdin); setStdin('') }) }} placeholder="工具要求確認時, 在此輸入回覆" /><button className="secondary" disabled={!running || !stdin} onClick={() => action(async () => { await bridge().send_input(run.run_id, stdin); setStdin('') })}>送出</button></div><details className="command"><summary>檢視執行命令{run && !running && <span>exit code {run.exit_code}</span>}</summary><code>{command}</code></details></section>
+          <div className="actions"><button className="primary" disabled={busy || running} onClick={() => execute()}><Icon name="play" />{busy ? t("Starting...") : t("Run tool")}</button><button className="secondary" disabled={busy || running} onClick={() => execute(true)}>{t("View Help")}</button><button className="stop" disabled={!running} onClick={() => action(async () => { setStatus({ key: 'Stopping' }); const result = await bridge().stop_tool(run.run_id); setRun(result); setOutput(result.output); setStatus({ key: 'Stopped' }) })}>{t("Stop")}</button><span>{t("All files are processed locally")}</span></div>
+          {running && <div className="progress" role="progressbar" aria-label={t("Tool running")}><i /></div>}
+          <section className="card output-card"><div className="card-title"><h2><Icon name="terminal" />{t("Output")}</h2><div><button className="text-button" onClick={() => action(() => bridge().copy_text(output))}><Icon name="copy" size={15} />{t("Copy")}</button><button className="text-button" onClick={() => setOutput('')}>{t("Clear output")}</button></div></div><pre ref={outputRef}>{output ? (run?.output_truncated ? '[' + t('Earlier output was truncated') + ']\n' : '') + output : t('Ready. Results will appear here')}</pre><div className="input-row stdin"><input aria-label={t("Interactive input")} disabled={!running} value={stdin} onChange={(event) => setStdin(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') action(async () => { await bridge().send_input(run.run_id, stdin); setStdin('') }) }} placeholder={t("Enter a reply when the tool requests confirmation")} /><button className="secondary" disabled={!running || !stdin} onClick={() => action(async () => { await bridge().send_input(run.run_id, stdin); setStdin('') })}>{t("Send")}</button></div><details className="command"><summary>{t('View command')}{run && !running && <span>exit code {run.exit_code}</span>}</summary><code>{command}</code></details></section>
         </main>
       </div>
     </div>

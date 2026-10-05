@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ast
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import json
 import os
 from pathlib import Path
@@ -39,6 +39,7 @@ class ToolSpec:
     outputs: str = ""
     requirements: str = ""
     source_only: bool = False
+    translations: dict[str, dict[str, str]] = field(default_factory=dict)
 
     def payload(self) -> dict[str, object]:
         details = _TOOL_DETAILS.get(self.id, {})

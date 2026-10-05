@@ -20,6 +20,7 @@ import uuid
 
 from gui.catalog import DISCOVERY_WARNINGS, TOOLS, TOOLS_BY_ID
 from gui.runtime import is_bundled, log_root, runner_path
+from gui.preferences import load_language
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_LIMIT = 2 * 1024 * 1024
 LOG_ROOT = log_root()
@@ -230,9 +231,9 @@ class ProcessManager:
         source_only = tool.payload()["source_only"]
         if is_bundled() and source_only and arguments not in (["--help"], ["-h"]):
             if not python_value:
-                raise ValueError("此開發工具需要選擇完整 my-py-tools 原始碼目錄與開發用 Python")
+                raise ValueError("This development tool requires a complete my-py-tools checkout and development Python")
             if not (cwd / "VERSION").is_file() or not (cwd / "scripts/release.py").is_file():
-                raise ValueError("工作目錄需選擇完整的 my-py-tools 原始碼 repository")
+                raise ValueError("Choose a complete my-py-tools checkout as the working directory")
             executable = resolve_executable(python_value)
             command = [str(executable), "-u", "-m", tool.module, *arguments]
         elif is_bundled():
@@ -409,6 +410,7 @@ def gui_defaults(startup_files: list[Path] | None = None) -> dict[str, object]:
         "args": command_text([str(path) for path in files]),
         "files": [str(path) for path in files],
         "bundled": is_bundled(),
+        "language": load_language(),
     }
 
 

@@ -12,6 +12,7 @@ from gui.catalog import DISCOVERY_WARNINGS, TOOLS
 from gui.launcher import ProcessManager, SUPPORTED_DOCUMENT_SUFFIXES, append_arguments, command_text
 from shared.version import repository_version
 from gui.runtime import is_bundled, resource_root, runner_path
+from gui.preferences import save_language
 
 
 def resource_path(relative: str) -> Path:
@@ -42,12 +43,20 @@ class DesktopApi:
     def choose_files(self, documents_only: bool = False) -> list[str]:
         import webview
 
+        english = self._defaults.get("language") == "en"
+        all_files = "All files (*.*)" if english else "所有檔案 (*.*)"
+        documents = "Supported documents" if english else "支援的文件"
+
         values = self._window.create_file_dialog(
             webview.FileDialog.OPEN,
             allow_multiple=True,
-            file_types=("支援的文件 (*.pdf;*.xlsx;*.docx;*.pptx;*.csv;*.txt)", "所有檔案 (*.*)") if documents_only else ("所有檔案 (*.*)",),
+            file_types=(documents + " (*.pdf;*.xlsx;*.docx;*.pptx;*.csv;*.txt)", all_files) if documents_only else (all_files,),
         )
         return list(values or ())
+
+    def set_language(self, language: str) -> None:
+        save_language(language)
+        self._defaults["language"] = language
 
     def choose_folder(self) -> str:
         import webview
@@ -58,10 +67,14 @@ class DesktopApi:
     def choose_python(self) -> str:
         import webview
 
+        english = self._defaults.get("language") == "en"
+        executable = "Python executable (python*.exe)" if english else "Python 執行檔 (python*.exe)"
+        all_files = "All files (*.*)" if english else "所有檔案 (*.*)"
+
         values = self._window.create_file_dialog(
             webview.FileDialog.OPEN,
             allow_multiple=False,
-            file_types=("Python 執行檔 (python*.exe)", "所有檔案 (*.*)") if sys.platform == "win32" else ("所有檔案 (*.*)",),
+            file_types=(executable, all_files) if sys.platform == "win32" else (all_files,),
         )
         return str(values[0]) if values else ""
 
@@ -81,17 +94,17 @@ class DesktopApi:
             "toolId": "document-to-markdown" if accepted else None,
         }
 
-    def preview_command(self, tool_id: str, arguments: str, python: str) -> str:
+    def preview_command(self, tool_id: str, args_text: str, python: str) -> str:
         tool = next((item for item in TOOLS if item.id == tool_id), None)
         if tool is None:
             return ""
         bundled_tool = is_bundled() and not tool.payload()["source_only"]
         runtime = str(runner_path()) if bundled_tool else python
         base = [runtime, tool.module] if bundled_tool else [runtime, "-u", "-m", tool.module]
-        return f"{command_text(base)} {arguments.strip()}".strip()
+        return f"{command_text(base)} {args_text.strip()}".strip()
 
-    def start_tool(self, tool_id: str, arguments: str, cwd: str, python: str) -> dict[str, Any]:
-        return self._manager.start(tool_id, arguments, cwd, python)
+    def start_tool(self, tool_id: str, args_text: str, cwd: str, python: str) -> dict[str, Any]:
+        return self._manager.start(tool_id, args_text, cwd, python)
 
     def run_status(self, run_id: str) -> dict[str, Any]:
         return self._manager.snapshot(run_id)
@@ -127,7 +140,7 @@ class DesktopApi:
         self._window.evaluate_js(
             "(function(){const el=document.createElement('textarea');"
             "el.value=" + json.dumps(value) + ";document.body.appendChild(el);el.select();"
-            "const ok=document.execCommand('copy');el.remove();if(!ok)throw Error('無法複製輸出');})()"
+            "const ok=document.execCommand('copy');el.remove();if(!ok)throw Error('Unable to copy output');})()"
         )
 
     def _shutdown(self) -> None:
@@ -174,7 +187,7 @@ def run_app(defaults: dict[str, object], *, smoke_test: bool = False) -> int:
         min_size=(940, 700),
         background_color="#090c10",
         text_select=True,
-        confirm_close=True,
+        confirm_close=not smoke_test,
     )
     api._window = window
     window.events.closed += api._shutdown
@@ -190,6 +203,6 @@ def run_app(defaults: dict[str, object], *, smoke_test: bool = False) -> int:
     if smoke_test:
         from gui.packaging.smoke import smoke_window
 
-        window.events.loaded += lambda _: smoke_window(window, api, smoke_result)
+        window.events.loaded += lambda _=None: smoke_window(window, api, smoke_result)
     webview.start(gui="edgechromium" if sys.platform == "win32" else "cocoa" if sys.platform == "darwin" else None, debug=False)
     return smoke_result["exit_code"]
