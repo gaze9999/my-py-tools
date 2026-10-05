@@ -15,8 +15,12 @@ node_modules/
 .coverage.*
 coverage.xml
 htmlcov/
+coverage/
 test-results/
+playwright-report/
+blob-report/
 junit*.xml
+.textlintcache
 
 # Build, package, and temporary output
 build/
