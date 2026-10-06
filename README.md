@@ -1,6 +1,6 @@
 # My Py Tools
 
-目前儲存庫版本 `0.4.1`, 提供可獨立使用的 Python 工具, 涵蓋常用文件轉 Markdown、Markdown 安全更新、Angular/Nx 程式碼盤點、開發產物清理與驗證證據整理
+目前儲存庫版本 `0.4.2`, 提供可獨立使用的 Python 工具, 涵蓋常用文件轉 Markdown、Markdown 安全更新、Angular/Nx 程式碼盤點、開發產物清理與驗證證據整理
 
 根目錄的操作入口統一使用 `launch-xxx` 命名, 工具原始碼集中在 `src/`, 相依清單與選用設定集中在 `setup/`, README、版本、Python 套件與 Git 設定仍保留在根目錄
 
@@ -49,7 +49,7 @@ python launch-cli.py documents.convert_to_markdown spec.pdf api.xlsx --combine-o
 
 從原始碼執行使用 `launch-gui.pyw`, Windows 可雙擊 `launch-gui.cmd`, macOS 可執行 `python launch-gui.pyw`, 開發環境需要先依 [GUI 教學](docs/gui.md) 安裝與建置
 
-介面的共用樣式與元件由獨立的 `workbench-ui` 儲存庫提供, `my-py-tools` 只保留工具操作流程、Python 串接及打包入口, 建置時從明確指定的 Workbench UI 路徑讀取資產, 成品不依賴這個路徑
+介面的共用樣式與元件由獨立的 `workbench-ui` 儲存庫提供, `my-py-tools` 只保留工具操作流程、Python 串接及打包入口, `workbench-ui.json` 固定共用版本, 本機前端開發直接讀取相鄰儲存庫, 建置時由共用 helper 準備離線資產, 成品不依賴來源路徑
 
 Windows GUI 提供 `launch-gui-<version>-windows-x64.exe`, 單一 EXE 內含 Python、工具相依套件與 Fixed Version WebView2, 雙擊即可使用, 不需要安裝 Python、Node.js 或 WebView2, 不會另開 CLI 主控台視窗, macOS 打包版內含 Python 與套件, 使用系統 WebKit
 

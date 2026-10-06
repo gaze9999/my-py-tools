@@ -119,13 +119,12 @@ python launch-cli.py distribution.smoke_cli .gui/cli-tests/my-py-tools-0.4.0-cli
 | 類型 | 名稱 | 用途 |
 | --- | --- | --- |
 | Secret | `WORKBENCH_UI_READ_TOKEN` | 唯讀取得 private `gaze9999/workbench-ui` 的 fine-grained token |
-| Variable | `WORKBENCH_UI_REF` | 已授權且已提交的 Workbench UI 完整 commit SHA |
 | Variable | `WEBVIEW2_FIXED_URL` | Microsoft 官方 Fixed Version x64 CAB 下載 URL |
 | Variable | `WEBVIEW2_FIXED_SHA256` | 維護者核對的 CAB SHA-256 |
 
-Workbench UI 共用資產需要明確的散布授權, 工作流程固定 commit 而非使用浮動分支, release helper 拒絕未提交的 Workbench UI 修改, 本機測試可使用 working tree, 但不能當成正式發布輸入
+Workbench UI 共用資產需要明確的散布授權, 完整 commit SHA 改由來源的 `workbench-ui.json` 管理, CI 不再讀取 `WORKBENCH_UI_REF` Variable, 固定版本後以 `persist-credentials: false` 取得來源, frontend helper 呼叫共用 Python 資產準備核心, 拒絕版本不符或資產未提交的輸入
 
-自動模式由 `release: published` 觸發, 使用上述 Variables, 也可在 Actions 手動指定既有 Release Tag、Workbench UI SHA 與 Runtime URL/hash, Secret 仍需預先設定, Tag 的 `VERSION` 必須一致, 不會自動變更版本、commit 或替換舊 Tag
+自動模式由 `release: published` 觸發, 使用來源中的 Workbench UI 固定版本及上述 Runtime Variables, 也可在 Actions 手動指定既有 Release Tag 與 Runtime URL/hash, 選用的 Workbench UI SHA 必須與來源設定相同, Secret 仍需預先設定, Tag 的 `VERSION` 必須一致, 不會自動變更版本、commit 或替換舊 Tag
 
 Fixed WebView2 不自動更新, 後續發布時須由維護者更新官方 Runtime URL 與核對值, 使用端不需要安裝 Runtime, Windows 10 的 AppContainer 權限及本機磁碟限制見 [GUI 教學](gui.md)
 

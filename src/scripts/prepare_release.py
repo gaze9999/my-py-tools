@@ -32,7 +32,7 @@ PACKAGE_PROJECTS = (
 )
 SKIP_DIRS = {
     ".git", ".gui", ".bundle", ".venv", "venv", "build", "dist", "__pycache__",
-    ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".nox", "node_modules", ".build-inputs",
+    ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".nox", "node_modules", ".build-inputs", ".workbench-ui",
 }
 SKIP_FILES = (
     "*.pyc", "*.pyo", "*.log", "*.tmp", "*.temp", "*.bak", "*.pem", "*.key",

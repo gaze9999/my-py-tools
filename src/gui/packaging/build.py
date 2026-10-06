@@ -32,6 +32,10 @@ def prepare_resources() -> None:
     from gui.packaging.icons import prepare_icons
 
     resources = SOURCE / "gui/resources"
+    pin = json.loads((ROOT / "workbench-ui.json").read_text(encoding="utf-8"))
+    provenance = json.loads((resources / "workbench-ui.json").read_text(encoding="utf-8"))
+    if provenance.get("commit") != pin["revision"] or provenance.get("dirty") is not False:
+        raise ValueError("Frontend assets do not match the pinned Workbench UI; rebuild the frontend")
     resources.mkdir(parents=True, exist_ok=True)
     prepare_icons(resources / "icons")
     (resources / "catalog.json").write_text(
@@ -108,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
         node = shutil.which("node")
         if not node:
             parser.error("Node.js is required to prepare Workbench UI assets")
-        run([node, "sync-workbench.mjs", "--source", str(args.workbench_ui.resolve())], SOURCE / "gui/frontend")
+        run([node, "sync-workbench.mjs", "--source", str(args.workbench_ui.resolve()), "--python", sys.executable], SOURCE / "gui/frontend")
         run([npm, "ci"], SOURCE / "gui/frontend")
         run([npm, "run", "build"], SOURCE / "gui/frontend")
     resources = SOURCE / "gui/resources"

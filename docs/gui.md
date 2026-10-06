@@ -24,7 +24,7 @@ macOS ZIP 內含 Python 與工具套件, 使用系統 WebKit, 解壓縮後開啟
 
 本機記錄檔儲存在 Windows `%LOCALAPPDATA%/MyPyTools/logs`, macOS `~/Library/Logs/MyPyTools`, macOS 發行包分成 Apple Silicon 與 Intel 版本. 發行包目前未簽章與公證, 交付前應由維護者核對資訊清單中的 SHA-256
 
-目前已發布的 `v0.3.2` 是舊的系統 WebView2 版本, 新的免安裝流程尚未在 Release CI 執行, 不會覆寫舊產物, macOS 仍待雲端原生驗證
+`v0.3.2` 是舊的系統 WebView2 版本, `v0.4.1` 已通過 Windows、macOS Apple Silicon 與 Intel 的雲端原生驗證, 但附件收集過多而停止發布, 新版修正只收正式成品, 不覆寫舊 Tag 或附件
 
 ## 原始碼啟動與本機測試包
 
@@ -77,7 +77,22 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\launch-gui.ps1
 
 關閉瀏覽器分頁不會停止服務, 請按介面的 `停止網頁服務` 或回到啟動的終端機按 Ctrl+C, 正在執行的工具也會停止, 下次使用時重新啟動 `launch-web.cmd`
 
-`sync-workbench.mjs` 只複製工具組的三個 `src/workbench-ui.*` 檔案到忽略的 vendor 資料夾, 建置資訊清單記錄版本、commit、是否有未提交修改及內容 SHA-256, 不複製展示資料或應用程式 API, 不改動 Workbench UI repo
+### 共用 UI 版本與載入方式
+
+根目錄的 `workbench-ui.json` 使用共用格式記錄儲存庫與完整 commit SHA, `sync-workbench.mjs` 呼叫該版本的 `integrations/python/workbench_assets.py`, 將四個前端資產、共用載入器與 SHA-256 資訊清單準備至忽略的 `src/gui/resources/workbench/`, 不另行維護 vendor 副本, 不複製展示資料或應用程式 API
+
+正式前端建置使用已準備且版本一致的離線資產, React 直接匯入共用 ES module 與 CSS, 不再同時執行瀏覽器按需載入器, 編譯後仍內嵌於同一份 HTML, 桌面與瀏覽器共用, 不增加網路載入或放寬 CSP, `--skip-frontend` 也會核對共用版本, 不接受舊版建置資產
+
+本機前端開發使用 `npm --prefix src/gui/frontend run dev`, Vite 直接讀取相鄰 `workbench-ui/src`, 不產生副本, UI 修改後可重新整理頁面, Vite 只提供前端資產, 工具操作仍需既有 Python API, 完整 CLI / GUI 啟動方式維持上方入口
+
+需要更新共用版本時, 先完成 Workbench UI 的提交與推送, 使用共用 helper 的明確更新入口, 不在一般啟動時下載或安裝, 更新失敗會保留原本的版本設定
+
+```powershell
+python ../workbench-ui/integrations/python/workbench_assets.py --project . --destination src/gui/resources/workbench --update
+node src/gui/frontend/sync-workbench.mjs --source ../workbench-ui --python python
+```
+
+再提交更新後的 `workbench-ui.json`, 交由 Release CI 重新建置免安裝程式, `--update` 需要乾淨的 Workbench UI `main` 與正確的 origin, Git 認證由既有環境管理, Token 不寫入設定檔、前端或成品
 
 本機 Windows 測試包需先從 [Microsoft 官方頁面](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) 取得 x64 Fixed Version CAB, 記錄 SHA-256, 再使用安全下載與解壓縮入口, 這個入口不安裝系統元件
 

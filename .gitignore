@@ -13,6 +13,7 @@ node_modules/
 /src/gui/frontend/src/vendor/
 /setup/runtime/
 /.build-inputs/
+/.workbench-ui/
 
 # Test and coverage output
 .coverage

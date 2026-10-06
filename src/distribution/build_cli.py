@@ -43,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
         node, npm = shutil.which("node"), shutil.which("npm")
         if not node or not npm or args.workbench_ui is None:
             parser.error("Provide --workbench-ui and Node.js/npm, or reuse an existing build with --skip-frontend")
-        run([node, "sync-workbench.mjs", "--source", str(args.workbench_ui.resolve())], frontend)
+        run([node, "sync-workbench.mjs", "--source", str(args.workbench_ui.resolve()), "--python", sys.executable], frontend)
         run([npm, "ci"], frontend)
         run([npm, "run", "build"], frontend)
     resources = ROOT / "src/gui/resources"
