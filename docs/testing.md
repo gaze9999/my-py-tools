@@ -36,6 +36,27 @@ python launch-cli.py documents.convert_to_markdown C:\path\spec.pdf --dry-run --
 
 測試通過只代表這些明確案例, 不表示未提供的文件版面, OCR, Angular 動態中繼資料或遠端 Git 操作已驗證
 
+## Windows 程序稽核 / 清理
+
+```powershell
+python -m unittest tests.test_windows_process_audit -v
+```
+
+預設只執行模擬資料測試, 涵蓋預設稽核、所有參數遮蔽、PID 重用、ownership / session 變化、父子關係變動、Codex / MCP / 服務保護、快照期限、覆寫保護、缺漏保留、未加 `--apply` 不開啟終止 handle, 以及兩次核對後才終止的呼叫順序
+
+只有明確開啟下列測試才建立並終止真實隔離程序, 不操作電腦上既有的程序, 不需要系統管理員權限
+
+```powershell
+$env:MY_PY_TOOLS_PROCESS_LIVE_TEST = '1'
+try {
+    python -m unittest tests.test_windows_process_audit.IsolatedWindowsProcessTests -v
+} finally {
+    Remove-Item Env:MY_PY_TOOLS_PROCESS_LIVE_TEST
+}
+```
+
+真實測試建立短暫 bootstrap 及自己專用的 sleep worker, bootstrap 正常退出後稽核 worker, 驗證無 ownership 不成為候選、預覽仍存活、明確選取及套用後退出, 最後只用已持有的自建 worker handle 清理, 不做整棵程序樹終止, 不驗證第三方服務的所有命令形式或跨平台封裝
+
 Markdown validator focused checks:
 
 ```powershell

@@ -70,7 +70,7 @@ Windows EXE 啟動時會解壓到自己的暫存資料夾, 正常結束後清理
 | `src/angular/` | 元件盤點、表單欄位規格檢查、generator 預檢與 Git 變更影響 | [Angular / Nx](docs/angular-tools.md) |
 | `src/documents/` | 文件轉 Markdown、欄位矩陣擷取與抽出版定位 | [文件處理](docs/document-tools.md) |
 | `src/markdown/` | 結構檢查、差異與 SHA-256 保護更新 | [Markdown](docs/markdown-tools.md) |
-| `src/maintenance/` | 產物隔離清理、環境比對與 Git 歷史身分改寫 | [維護](docs/maintenance-tools.md) |
+| `src/maintenance/` | Windows 程序稽核、產物隔離清理、環境比對與 Git 歷史身分改寫 | [維護](docs/maintenance-tools.md) |
 | `src/text/`, `src/validation/` | token 計數與既有驗證證據索引 | [文字與驗證](docs/text-validation-tools.md) |
 | `src/shared/` | 選用變數、版本與核心載入 | [設定](docs/configuration.md) |
 | `src/gui/` | 工具操作流程、Workbench UI 串接與打包 | [GUI](docs/gui.md) |

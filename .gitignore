@@ -41,6 +41,7 @@ dist/
 .bundle/
 .gui/
 .work-artifact-cleaner/
+/.process-audit/
 
 # Local configuration and virtual environments
 .env
