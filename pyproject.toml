@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "my-py-document-core"
-version = "0.2.1"
+version = "0.2.2"
 description = "Reusable local document extraction and guarded Markdown APIs"
 readme = "docs/python-document-core.md"
 requires-python = ">=3.10"
@@ -15,6 +15,6 @@ packages = ["my_py_document_core", "my_py_document_core.documents", "my_py_docum
 
 [tool.setuptools.package-dir]
 my_py_document_core = "src/my_py_document_core"
-"my_py_document_core.documents" = "documents"
-"my_py_document_core.markdown" = "markdown"
-"my_py_document_core.shared" = "shared"
+"my_py_document_core.documents" = "src/documents"
+"my_py_document_core.markdown" = "src/markdown"
+"my_py_document_core.shared" = "src/shared"

@@ -2,16 +2,16 @@
 
 ## 設計原則
 
-輸入與輸出路徑不放在 `.env`; 每次執行由位置參數或 `--root`, `--output`, `--target-file` 等 CLI 選項提供, 未指定時只使用文件中明載的目前目錄或來源同目錄預設
+輸入與輸出路徑不放在 `.env`, 每次執行由位置參數或 `--root`, `--output`, `--target-file` 等 CLI 選項提供, 未指定時只使用文件中明載的目前目錄或來源同目錄預設
 
 這可避免工具被單一專案, 使用者目錄或同步磁碟路徑綁定, 也讓同一份 working copy 可直接處理不同專案
 
 ## `.env` 支援欄位
 
-repository 根目錄的 `.env` 為選用檔案
+`setup/.env` 為選用檔案
 
 ```powershell
-Copy-Item .\.env.example .\.env
+Copy-Item .\setup\.env.example .\setup\.env
 ```
 
 | 變數 | 使用工具 | 預設值 | 無效時行為 |
@@ -28,7 +28,7 @@ Copy-Item .\.env.example .\.env
 
 1. CLI 選項, 例如 `--title`, `--encoding`, `--namespace`
 2. process environment 中的 `TOOL_*` 變數
-3. `--env-file` 指定檔案或 repository 根目錄 `.env`
+3. `--env-file` 指定檔案或 `setup/.env`
 4. 工具內建安全預設值
 
 路徑沒有 `.env` 優先序, 一律由 CLI 決定
@@ -48,9 +48,9 @@ Copy-Item .\.env.example .\.env
 支援設定變數的工具可用 `--env-file`
 
 ```powershell
-python -m text.tokenizer --env-file .\profile.env --text "example"
-python -m documents.extract_field_matrix converted.md --env-file .\profile.env
-python -m markdown.guarded_markdown_update --env-file .\profile.env --target-file history.md inspect history
+python launch-cli.py text.tokenizer --env-file .\profile.env --text "example"
+python launch-cli.py documents.extract_field_matrix converted.md --env-file .\profile.env
+python launch-cli.py markdown.guarded_markdown_update --env-file .\profile.env --target-file history.md inspect history
 ```
 
-`.env` 支援 UTF-8 BOM, 空白行, `#` 開頭註解, 以單引號或雙引號包住的完整值, 以及 `${TOOL_OTHER_KEY}` 變數引用; 不支援 shell command substitution 或行尾註解
+`.env` 支援 UTF-8 BOM, 空白行, `#` 開頭註解, 以單引號或雙引號包住的完整值, 以及 `${TOOL_OTHER_KEY}` 變數引用, 不支援 shell command substitution 或行尾註解

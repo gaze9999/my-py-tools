@@ -8,7 +8,7 @@ from pathlib import Path
 from gui.catalog import TOOLS
 
 
-MODULES = tuple(tool.module for tool in TOOLS) + ("gui.launcher", "gui.background_launcher")
+MODULES = tuple(tool.module for tool in TOOLS) + ("gui.launcher", "gui.background_launcher", "distribution.build_cli", "distribution.smoke_cli")
 
 
 class CliSmokeTests(unittest.TestCase):
@@ -17,7 +17,7 @@ class CliSmokeTests(unittest.TestCase):
         for module in MODULES:
             with self.subTest(module=module):
                 result = subprocess.run(
-                    [sys.executable, "-m", module, "--help"],
+                    [sys.executable, str(repository / "launch-cli.py"), module, "--help"],
                     cwd=repository,
                     capture_output=True,
                     text=True,

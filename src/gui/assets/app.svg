@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>My Py Tools</title>
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="#101a24" />
+  <rect x="20" y="20" width="216" height="216" rx="44" fill="#17313b" />
+  <polyline points="68,80 112,128 68,176" fill="none" stroke="#69edac" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />
+  <polyline points="142,176 188,176" fill="none" stroke="#f5bc63" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

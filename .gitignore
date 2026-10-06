@@ -7,8 +7,12 @@ __pycache__/
 .ruff_cache/
 .tox/
 .nox/
+/tiktoken-cache/
 node_modules/
-/gui/resources/
+/src/gui/resources/
+/src/gui/frontend/src/vendor/
+/setup/runtime/
+/.build-inputs/
 
 # Test and coverage output
 .coverage
@@ -18,6 +22,7 @@ htmlcov/
 coverage/
 test-results/
 playwright-report/
+.playwright-cli/
 blob-report/
 junit*.xml
 .textlintcache

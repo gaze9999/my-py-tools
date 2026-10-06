@@ -1,137 +1,100 @@
 # My Py Tools
 
-目前版本 `0.3.2`, 這是一套以 Python 3.10+ 執行的本機工具, 用於 Angular/Nx 程式碼盤點, 常用文件轉 Markdown, Markdown 安全更新, 開發產物清理與驗證證據整理
+目前儲存庫版本 `0.4.0`, 提供可獨立使用的 Python 工具, 涵蓋常用文件轉 Markdown、Markdown 安全更新、Angular/Nx 程式碼盤點、開發產物清理與驗證證據整理
 
-工具依用途分在不同資料夾, 從儲存庫根目錄以 `python -m <分類>.<工具>` 執行, 輸入與輸出路徑由 CLI 提供或從明確輸入與目前目錄安全推導, 不依賴 `.env` 綁定特定專案或個人路徑
+根目錄的操作入口統一使用 `launch-xxx` 命名, 工具原始碼集中在 `src/`, 相依清單與選用設定集中在 `setup/`, README、版本、Python 套件與 Git 設定仍保留在根目錄
 
-## 安裝
+| 使用方式 | Windows 原始碼版 | Windows 免安裝版 | macOS 免安裝版 |
+| --- | --- | --- | --- |
+| 終端機工具 | `launch-cli.cmd <工具> <參數>` | `MyPyToolsCLI/launch-cli.cmd <工具> <參數>` | `MyPyToolsCLI/launch-cli <工具> <參數>` |
+| 瀏覽器介面 | `launch-web.cmd` | `MyPyToolsCLI/launch-web.cmd` | `MyPyToolsCLI/launch-cli --web` |
+| 桌面視窗 | `launch-gui.cmd` | `launch-gui-<version>-windows-x64.exe` | `launch-gui.app` |
 
-CLI 工具的文件擷取與精確 token 計算需安裝選用套件
+Windows 原始碼版提供同名 PowerShell 入口 `launch-cli.ps1`、`launch-web.ps1`、`launch-gui.ps1`, CMD 仍保留, CLI 免安裝包另外附上 CLI / Web 的 PS1, GUI 發行版直接開啟單一 EXE, 詳見 [PowerShell 啟動教學](docs/gui.md#powershell-啟動)
+
+## CLI 入口
+
+Windows 與 macOS 各自提供獨立的 CLI、GUI 免安裝包, 兩者分開下載與啟動, CLI 包支援終端機及瀏覽器, 內含共用網頁介面但不含 WebView2, 瀏覽器模式使用電腦既有的瀏覽器
+
+CLI 免安裝包需保留整個 `MyPyToolsCLI/` 資料夾, Windows 在終端機執行 `MyPyToolsCLI\launch-cli.exe --list`, macOS 執行 `./MyPyToolsCLI/launch-cli --list`, 工具參數與下方的原始碼入口相同
+
+原始碼版需要 Python 3.10+, Windows 也可使用 Python 3.14
 
 ```powershell
-python -m pip install --requirement .\requirements.txt
+.\launch-cli.cmd --list
+.\launch-cli.cmd documents.convert_to_markdown "C:\path\spec.docx"
+.\launch-cli.cmd document-to-markdown --help
 ```
 
-若 Windows 環境使用 Python Launcher, 可改用 `py -X utf8 -m pip install --requirement .\requirements.txt`
+Windows 本機 CLI 使用 `launch-cli.cmd`, 優先使用專案的 `.venv-gui` Python, 不存在時使用 PATH 中的 Python, macOS 原始碼版使用 `python launch-cli.py`, 呼叫時可以在任意工作目錄使用啟動檔的完整路徑, 輸入與輸出仍依目前工作目錄及明確參數解析
 
-各格式的相依套件如下
+PDF、Office 文件及精確 token 計算需要選用相依套件, 由開發環境安裝, 不在每次啟動時自動下載
 
-| 功能 | 套件 |
-| --- | --- |
-| PDF 轉 Markdown | `pypdf`, `pdfplumber` |
-| XLSX 轉 Markdown | `openpyxl` |
-| DOCX 轉 Markdown | `python-docx` |
-| PPTX 轉 Markdown | `python-pptx` |
-| 精確 token 計算 | `tiktoken`, 缺少套件或編碼無效時自動改用估算 |
-| CSV, TXT 與其他工具 | Python 標準函式庫 |
+```powershell
+python -m pip install -r setup/requirements.txt
+```
 
-從原始碼執行 GUI 時另外安裝 `requirements-gui.txt`, Windows 使用者可下載已包含 Python 執行環境的發行包
+多個來源可分別輸出或合併成單一 Markdown
 
-## 資料夾與工具
+```powershell
+python launch-cli.py documents.convert_to_markdown spec.pdf api.xlsx --output-dir markdown-output
+python launch-cli.py documents.convert_to_markdown spec.pdf api.xlsx --combine-output combined.md
+```
 
-| 資料夾 | 工具 | 詳細文件 |
+## GUI 入口
+
+瀏覽器與桌面視窗使用同一套 React + Workbench UI 介面, 工具用途、分類、語言與執行能力相同, Windows 原始碼版雙擊 `launch-web.cmd` 開啟瀏覽器, `launch-gui.cmd` 開啟桌面視窗, `launch-cli.cmd` 保留終端機操作
+
+瀏覽器模式僅在 `127.0.0.1` 提供本機服務, 不上傳文件, 使用原生檔案挑選視窗取得來源路徑, 挑選視窗不可用時可輸入完整路徑, 瀏覽器拖曳會請使用者再挑選原始檔, 桌面視窗可直接拖曳原地轉換, 詳見 [GUI 教學](docs/gui.md)
+
+從原始碼執行使用 `launch-gui.pyw`, Windows 可雙擊 `launch-gui.cmd`, macOS 可執行 `python launch-gui.pyw`, 開發環境需要先依 [GUI 教學](docs/gui.md) 安裝與建置
+
+介面的共用樣式與元件由獨立的 `workbench-ui` 儲存庫提供, `my-py-tools` 只保留工具操作流程、Python 串接及打包入口, 建置時從明確指定的 Workbench UI 路徑讀取資產, 成品不依賴這個路徑
+
+Windows GUI 提供 `launch-gui-<version>-windows-x64.exe`, 單一 EXE 內含 Python、工具相依套件與 Fixed Version WebView2, 雙擊即可使用, 不需要安裝 Python、Node.js 或 WebView2, 不會另開 CLI 主控台視窗, macOS 打包版內含 Python 與套件, 使用系統 WebKit
+
+Windows EXE 啟動時會解壓到自己的暫存資料夾, 正常結束後清理, 需要本機可寫入的暫存空間, 請勿使用系統管理員身分執行, GUI 只提供視窗入口, 命令列使用者另外下載 CLI 包
+
+本機最新封裝測試的 GUI 轉檔與語言切換已通過, 但單檔 EXE 的退出清理逾時並留下 WebView2 檔案, 尚未確認原因, 不提供這份本機測試 EXE 作為正式下載, 正式 CLI / GUI 附件須通過各平台 Release CI 驗證
+
+正式產物由 Release 的 Windows、macOS Apple Silicon 與 macOS Intel runner 各自建置, 所有平台通過驗證後才上傳 Windows GUI EXE、macOS GUI ZIP 與各平台 CLI ZIP, 本機打包只供測試, 自動發布所需的 Workbench UI 讀取權限與固定版 Runtime 設定見 [發布教學](docs/releases.md)
+
+[v0.3.2 的 Windows GUI 包](https://github.com/gaze9999/my-py-tools/releases/tag/v0.3.2) 仍使用系統 WebView2, 新的內含 Runtime 打包方式不會改寫既有發布檔, 獨立 CLI 與 macOS 新包須完成 CI 設定及原生驗證後才提供下載, 來源 ZIP 與核心 wheel 可獨立發布
+
+網頁與桌面介面預設繁體中文, 可切換英文並記住選擇, 中文翻譯缺漏時使用英文備援, 保留來源旁輸出、指定資料夾及合併輸出選項
+
+## 分類與教學
+
+| 原始碼 | 用途 | 教學 |
 | --- | --- | --- |
-| `angular/` | Nx 元件盤點, 表單欄位規格檢查, generator 衝突預檢, Git 變更影響報告 | [Angular 與 Nx 工具](docs/angular-tools.md) |
-| `documents/` | PDF, XLSX, DOCX, PPTX, CSV, TXT 轉 Markdown, 欄位矩陣擷取, Markdown 抽出版定位 | [文件處理工具](docs/document-tools.md) |
-| `markdown/` | Markdown 結構檢查與差異, SHA-256 保護更新 | [Markdown 工具](docs/markdown-tools.md) |
-| `maintenance/` | 快取隔離清理, 環境一致性檢查, Git 歷史身分改寫 | [維護工具](docs/maintenance-tools.md) |
-| `text/` | token 計數與備援估算 | [文字與驗證工具](docs/text-validation-tools.md) |
-| `validation/` | `run-*/results.json` 驗證證據索引 | [文字與驗證工具](docs/text-validation-tools.md) |
-| `shared/` | 可容錯的 `.env` 變數讀取, 版本與核心載入 | [設定與備援機制](docs/configuration.md) |
-| `packages/` | 用途獨立的可重用 Python 核心套件 | [工作區檢查工具包](docs/python-workspace-core.md) |
-| `gui/` | React 桌面 GUI, Python 工具橋接與 Windows/macOS 發行包建置 | [本機 GUI](docs/gui.md) |
-| `tests/` | 標準函式庫 `unittest` 測試 | [測試方式](docs/testing.md) |
+| `src/angular/` | 元件盤點、表單欄位規格檢查、generator 預檢與 Git 變更影響 | [Angular / Nx](docs/angular-tools.md) |
+| `src/documents/` | 文件轉 Markdown、欄位矩陣擷取與抽出版定位 | [文件處理](docs/document-tools.md) |
+| `src/markdown/` | 結構檢查、差異與 SHA-256 保護更新 | [Markdown](docs/markdown-tools.md) |
+| `src/maintenance/` | 產物隔離清理、環境比對與 Git 歷史身分改寫 | [維護](docs/maintenance-tools.md) |
+| `src/text/`, `src/validation/` | token 計數與既有驗證證據索引 | [文字與驗證](docs/text-validation-tools.md) |
+| `src/shared/` | 選用變數、版本與核心載入 | [設定](docs/configuration.md) |
+| `src/gui/` | 工具操作流程、Workbench UI 串接與打包 | [GUI](docs/gui.md) |
+| `src/scripts/` | 來源 ZIP、核心 wheel 與明確確認的發布流程 | [發布](docs/releases.md) |
+| `src/distribution/` | 獨立 CLI 免安裝包的原生建置 | [發布](docs/releases.md) |
+| `src/my_py_document_core/`, `packages/workspace_core/` | 用途獨立的可重用 Python 核心 | [文件核心](docs/python-document-core.md), [工作區核心](docs/python-workspace-core.md) |
+| `tests/` | 可重現的測試程式碼, 保留於 Git | [測試](docs/testing.md) |
+| `setup/` | CLI、GUI、打包相依清單與 `.env.example` | [設定](docs/configuration.md) |
 
-## 可重用 Python 工具包
+新增工具放在 `src/<用途>/`, 模組名稱仍是 `<用途>.<工具>`, CLI 與 GUI 共用工具清單, 不再從根目錄使用舊的 `python -m <用途>.<工具>` 命令, 新增與翻譯方式見 [GUI 教學](docs/gui.md)
 
-文件與 Markdown 核心可建置為 `my-py-document-core` wheel, 工作區一致性與驗證證據核心則建置為獨立的 `my-py-workspace-core` wheel. 兩者都提供固定 API 給 MCP 或其他 Python 工具使用, 執行時不依賴此儲存庫的位置, 原有 CLI 繼續可用, 詳見 [可重用文件工具包](docs/python-document-core.md) 與 [工作區檢查工具包](docs/python-workspace-core.md)
+## 設定與安全
 
-## 快速開始
+`setup/.env` 是選用的非路徑變數設定, 缺少或無效時使用安全預設值, 可複製 `setup/.env.example` 後自訂, 輸入、輸出及專案路徑仍以 CLI 參數為準
 
-Windows 使用者可從 [Releases](https://github.com/gaze9999/my-py-tools/releases/latest) 下載 x64 發行包, 解壓縮後開啟 `MyPyTools.exe`, 包內含 Python 與工具相依套件, 需有 Microsoft Edge WebView2 Runtime. macOS 尚未提供預先建置的應用程式, 可依下方原始碼流程啟動或在 Mac 建置, GUI 使用系統 WebKit
+多數工具唯讀或只寫入指定輸出, Markdown 更新需要 `--write`, 產物清理預設預覽, Git 歷史改寫會建立備份並再次要求確認, 轉換後的 Markdown 供搜尋與定位, 原始文件仍是權威來源
 
-開發者可從原始碼啟動, 先安裝 Python 3.10+ 與 Node.js 22+, 再安裝相依套件並建置 React 畫面. Windows 開發版可直接執行 `launch-gui.pyw` 在背景啟動, macOS 可由終端機執行 `python -m gui.launcher`
+Git 工具需要 Git, 發布工具需要完整原始碼、開發用 Python 與已登入的 GitHub CLI, 免安裝 GUI 不會把這些開發工具偽裝成內建功能, MCP 與 Skills 仍由 `codex-setup` 管理
 
-```powershell
-python -m pip install --requirement .\requirements-gui.txt
-npm --prefix .\gui\frontend ci
-npm --prefix .\gui\frontend run build
-python -m gui.launcher
-```
-
-要在目前作業系統建置獨立發行包, 再安裝 `requirements-build.txt` 並執行 `python -m gui.packaging.build`, Windows 需在 Windows 建置, macOS 需在 Mac 建置
-
-GUI 支援多文件拖曳, 預設在來源旁產生同名 `.md`, 也可指定輸出資料夾, 合併成單一 Markdown, 或先執行 dry-run. 每項工具在 GUI 都會說明用途, 輸入, 輸出與執行前注意事項. `local_documents` MCP 仍由 `codex-setup` 管理, 詳細操作與新增工具方式見 [本機 GUI](docs/gui.md)
-
-GUI 預設繁體中文, 可在右上角切換英文並記住選擇, 中文翻譯缺少時使用英文備援, CLI 原始輸出與作業系統檔案視窗保留原語言
-
-單一文件輸入, 預設在來源旁產生同名 `.md`
+## 驗證與發布
 
 ```powershell
-python -m documents.convert_to_markdown "C:\path\spec.docx"
+python -m unittest discover -s tests -t . -v
+python launch-cli.py scripts.release prepare --dry-run
 ```
 
-多個混合格式輸入, 各自輸出至同一資料夾
-
-```powershell
-python -m documents.convert_to_markdown spec.pdf api.xlsx notes.txt --output-dir .\markdown-output
-```
-
-多個來源合併成單一 Markdown
-
-```powershell
-python -m documents.convert_to_markdown spec.pdf api.xlsx --combine-output .\combined.md
-```
-
-盤點目前 Nx 工作區的元件
-
-```powershell
-python -m angular.component_inventory --root C:\path\workspace --json
-```
-
-預覽目前目錄可隔離的快取, 不移動任何檔案
-
-```powershell
-python -m maintenance.cleanup_work_artifacts
-```
-
-每支工具都支援 `--help`
-
-```powershell
-python -m documents.convert_to_markdown --help
-```
-
-## `.env`
-
-`.env` 是選用設定, 只保存非路徑預設值, 目前支援歷史標記命名空間, 欄位矩陣標題, tokenizer 編碼與備援估算比率
-
-需要自訂時可先複製 `.env.example` 為 `.env`, `.env` 已由 Git 忽略
-
-來源檔, 自訂輸出檔, 儲存庫根目錄與掃描目錄不從 `.env` 讀取, 詳細預設值, 優先序與錯誤備援見 [設定與備援機制](docs/configuration.md)
-
-## 安全邊界
-
-- 多數工具唯讀, 或只寫入明確指定的輸出檔
-- `markdown.guarded_markdown_update` 預設 dry-run, 需 `--write` 才會更新單一目標檔
-- `maintenance.cleanup_work_artifacts` 預設只預覽, 需 `--apply` 才會移至隔離區, 永久清除需另外明確指定
-- `maintenance.rewrite_git_history` 會改寫 commit SHA, 執行前要求乾淨 worktree, 建立 Git bundle 並要求輸入 `REWRITE`, 不會自行 push
-- 轉換後的 Markdown 只供搜尋與定位, 原始文件仍是權威來源
-
-## 版本與發布
-
-儲存庫版本由 `VERSION` 管理, 文件核心與工作區核心依用途各自使用獨立套件版本, 發布資訊清單會記錄實際組合
-
-```powershell
-python scripts/release.py prepare --dry-run
-```
-
-準備與 GitHub Release 的安全檢查, 發布產物結構及明確確認流程見 [版本與發布](docs/releases.md), `codex-setup` 的 Skills / MCP 發布用途不同, 保留獨立流程
-
-## 驗證
-
-```powershell
-python -m unittest discover -s tests -v
-python -m compileall -q angular documents gui maintenance markdown packages shared src text validation
-```
-
-已涵蓋 CLI 說明, GUI 工具清單與實際子處理程序執行, `.env` 容錯處理, Angular/Nx 測試資料, Markdown dry-run, 清理預覽, tokenizer 備援估算, 驗證索引, 單一與多來源文件轉換, 以及 XLSX/DOCX/PPTX/CSV/TXT 輸出, PDF 另以真實文件 dry-run 驗證
+儲存庫版本由 `VERSION` 管理, 文件核心及工作區核心維持獨立套件版本, 詳細安全檢查與發布操作見 [發布教學](docs/releases.md), 本機產物不會自動 commit、push 或發布

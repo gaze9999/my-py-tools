@@ -8,7 +8,7 @@ import unittest
 from markdown.validate_structure import analyze
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("validator_export", ROOT / "scripts/export_markdown_validator.py")
+spec = importlib.util.spec_from_file_location("validator_export", ROOT / "src/scripts/export_markdown_validator.py")
 export = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(export)
 
@@ -57,9 +57,9 @@ class StructureTests(unittest.TestCase):
         expected = export.snapshot()
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            (root / "markdown").mkdir()
-            source = (ROOT / "markdown/validate_structure.py").read_bytes().replace(b"\r\n", b"\n")
-            (root / "markdown/validate_structure.py").write_bytes(source.replace(b"\n", b"\r\n"))
+            (root / "src/markdown").mkdir(parents=True)
+            source = (ROOT / "src/markdown/validate_structure.py").read_bytes().replace(b"\r\n", b"\n")
+            (root / "src/markdown/validate_structure.py").write_bytes(source.replace(b"\n", b"\r\n"))
             (root / "pyproject.toml").write_bytes((ROOT / "pyproject.toml").read_bytes())
             self.assertEqual(export.snapshot(root), expected)
             target = root / "snapshot.py"
