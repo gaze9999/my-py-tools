@@ -123,8 +123,8 @@ jobs:
         with:
           name: desktop-${{ matrix.artifact }}
           path: |
-            dist/desktop/**/*.zip
-            dist/desktop/**/*.exe
+            dist/desktop/**/my-py-tools-*-macos-*.zip
+            dist/desktop/**/launch-gui-*-windows-*.exe
             dist/desktop/**/desktop-manifest-*.json
           if-no-files-found: error
 
@@ -221,7 +221,7 @@ jobs:
         with:
           name: cli-${{ matrix.artifact }}
           path: |
-            dist/cli/**/*.zip
+            dist/cli/**/my-py-tools-*-cli-*.zip
             dist/cli/**/cli-manifest-*.json
           if-no-files-found: error
 
@@ -243,7 +243,7 @@ jobs:
         run: |
           $release = gh api "repos/$env:GH_REPO/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $release.draft) { throw 'A published release is required' }
-          $assets = @(Get-ChildItem desktop-assets -File -Recurse | Where-Object { $_.Extension -in @('.zip', '.exe', '.whl') -or $_.Name -eq 'release-manifest.json' -or $_.Name -like 'desktop-manifest-*.json' -or $_.Name -like 'cli-manifest-*.json' })
+          $assets = @(Get-ChildItem desktop-assets -File -Recurse | Where-Object { $_.Name -like 'my-py-tools-*.zip' -or $_.Name -like 'launch-gui-*-windows-*.exe' -or $_.Name -like 'my_py_*_core-*.whl' -or $_.Name -eq 'release-manifest.json' -or $_.Name -like 'desktop-manifest-*.json' -or $_.Name -like 'cli-manifest-*.json' })
           if ($assets.Count -ne 16) { throw 'Expected source ZIP, two core wheels, release manifest, six portable assets and six platform manifests' }
           foreach ($asset in $assets) {
             if ($release.assets.name -contains $asset.Name) { throw "Existing release asset will not be overwritten: $($asset.Name)" }

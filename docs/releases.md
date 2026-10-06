@@ -78,6 +78,8 @@ python launch-cli.py scripts.release publish v0.2.0 --asset-root C:\path\release
 
 GUI EXE / ZIP 搭配 `desktop-manifest-<os>-<architecture>.json`, 記錄格式、Python、工具、Workbench UI commit 與來源 hash、瀏覽器 Runtime 模式、大小及 SHA-256, Windows 另記錄內嵌 payload 的檔案數、壓縮 / 解壓容量與 SHA-256, 發布前直接讀取 EXE 內的 payload 驗證 CRC、必要檔案與安全路徑, 確認只有 GUI 對外入口, CLI ZIP 搭配 `cli-manifest-<os>-<architecture>.json`, 記錄工具清單、需原始碼的開發工具、終端機 / 瀏覽器模式、共用介面來源、入口與 hash, 來源工作及所有平台的原生 GUI smoke test、CLI 執行與瀏覽器轉檔測試通過後, publish job 才上傳十六個附件並核對 GitHub 回傳的大小與 SHA-256, 包含四個來源附件與十二個免安裝附件, 已存在的附件不覆寫
 
+Actions 附件依正式成品檔名收集, 不另行上傳封裝資料夾內的 `base_library.zip` 或 worker, 它們只保留在使用者下載的完整成品內
+
 ### CLI 使用與本機測試
 
 解壓縮完整 CLI 包後, 保留執行檔與 `_internal/`, 不需要另外安裝 Python 或文件套件
