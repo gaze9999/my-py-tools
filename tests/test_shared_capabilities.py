@@ -13,7 +13,7 @@ from shared.workspace_core import load_workspace_core
 class SharedCapabilityTests(unittest.TestCase):
     def test_locate_extracts_distinguishes_current_and_stale_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             source = root / "source.txt"
             source.write_text("current", encoding="utf-8")
             digest = hashlib.sha256(source.read_bytes()).hexdigest()

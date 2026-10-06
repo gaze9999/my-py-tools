@@ -27,6 +27,37 @@ env:
   WEBVIEW2_SHA256: ${{ inputs.webview2_sha256 || vars.WEBVIEW2_FIXED_SHA256 }}
 
 jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/gui/frontend/package-lock.json
+      - run: python -m pip install -r setup/requirements-release.txt
+      - name: Verify frontend source
+        working-directory: src/gui/frontend
+        run: |
+          npm ci
+          npm test
+      - name: Prepare and verify source ZIP and independent core wheels
+        run: python launch-cli.py scripts.release prepare
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-release
+          path: |
+            dist/${{ env.RELEASE_TAG }}/*.zip
+            dist/${{ env.RELEASE_TAG }}/*.whl
+            dist/${{ env.RELEASE_TAG }}/release-manifest.json
+          if-no-files-found: error
+
   desktop:
     strategy:
       fail-fast: false
@@ -195,7 +226,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [desktop, cli]
+    needs: [source, desktop, cli]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -207,13 +238,13 @@ jobs:
         with:
           pattern: '*'
           path: desktop-assets
-      - name: Publish only cloud-built, verified portable assets
+      - name: Publish only cloud-built, verified source and portable assets
         shell: pwsh
         run: |
           $release = gh api "repos/$env:GH_REPO/releases/tags/$env:RELEASE_TAG" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $release.draft) { throw 'A published release is required' }
-          $assets = @(Get-ChildItem desktop-assets -File -Recurse | Where-Object { $_.Extension -in @('.zip', '.exe') -or $_.Name -like 'desktop-manifest-*.json' -or $_.Name -like 'cli-manifest-*.json' })
-          if ($assets.Count -ne 12) { throw 'Expected Windows GUI EXE, macOS GUI ZIPs, separate CLI ZIPs and six manifests' }
+          $assets = @(Get-ChildItem desktop-assets -File -Recurse | Where-Object { $_.Extension -in @('.zip', '.exe', '.whl') -or $_.Name -eq 'release-manifest.json' -or $_.Name -like 'desktop-manifest-*.json' -or $_.Name -like 'cli-manifest-*.json' })
+          if ($assets.Count -ne 16) { throw 'Expected source ZIP, two core wheels, release manifest, six portable assets and six platform manifests' }
           foreach ($asset in $assets) {
             if ($release.assets.name -contains $asset.Name) { throw "Existing release asset will not be overwritten: $($asset.Name)" }
           }

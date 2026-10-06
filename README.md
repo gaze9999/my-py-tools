@@ -1,6 +1,6 @@
 # My Py Tools
 
-目前儲存庫版本 `0.4.0`, 提供可獨立使用的 Python 工具, 涵蓋常用文件轉 Markdown、Markdown 安全更新、Angular/Nx 程式碼盤點、開發產物清理與驗證證據整理
+目前儲存庫版本 `0.4.1`, 提供可獨立使用的 Python 工具, 涵蓋常用文件轉 Markdown、Markdown 安全更新、Angular/Nx 程式碼盤點、開發產物清理與驗證證據整理
 
 根目錄的操作入口統一使用 `launch-xxx` 命名, 工具原始碼集中在 `src/`, 相依清單與選用設定集中在 `setup/`, README、版本、Python 套件與 Git 設定仍保留在根目錄
 
@@ -57,7 +57,7 @@ Windows EXE 啟動時會解壓到自己的暫存資料夾, 正常結束後清理
 
 本機最新封裝測試的 GUI 轉檔與語言切換已通過, 但單檔 EXE 的退出清理逾時並留下 WebView2 檔案, 尚未確認原因, 不提供這份本機測試 EXE 作為正式下載, 正式 CLI / GUI 附件須通過各平台 Release CI 驗證
 
-正式產物由 Release 的 Windows、macOS Apple Silicon 與 macOS Intel runner 各自建置, 所有平台通過驗證後才上傳 Windows GUI EXE、macOS GUI ZIP 與各平台 CLI ZIP, 本機打包只供測試, 自動發布所需的 Workbench UI 讀取權限與固定版 Runtime 設定見 [發布教學](docs/releases.md)
+正式來源 ZIP、核心 wheel 與 CLI / GUI 免安裝產物都由 Release CI 建置, 所有工作通過驗證後才上傳附件, 本機可只做相關單元測試與設定檢查, 不需要封裝測試, 自動發布所需的 Workbench UI 讀取權限與固定版 Runtime 設定見 [發布教學](docs/releases.md)
 
 [v0.3.2 的 Windows GUI 包](https://github.com/gaze9999/my-py-tools/releases/tag/v0.3.2) 仍使用系統 WebView2, 新的內含 Runtime 打包方式不會改寫既有發布檔, 獨立 CLI 與 macOS 新包須完成 CI 設定及原生驗證後才提供下載, 來源 ZIP 與核心 wheel 可獨立發布
 

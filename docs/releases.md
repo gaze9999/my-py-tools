@@ -6,7 +6,15 @@ repository 版本記錄於根目錄 `VERSION`, 使用 SemVer, Git Tag 加上 `v`
 
 ## 準備發布
 
-先執行完整來源驗證與暫存建置, 不寫入 `dist/`
+正式發布先更新 `VERSION` 與前端套件版本, 檢查 diff, 本機只需執行與修改相關的單元測試、設定及文件檢查, 不需要建置 EXE、app、ZIP 或 wheel, `prepare --dry-run` 仍會建置暫存 wheel, 不屬於最小測試
+
+提交並推送確認過的來源後, 建立指向該 commit 的新 Tag 與 GitHub Release, `release: published` 會觸發雲端來源與平台建置, CI 的 `source` 工作安裝 `setup/requirements-release.txt`, 執行前端測試及 `scripts.release prepare`, 產生並驗證來源 ZIP、兩個核心 wheel 與來源資訊清單
+
+來源、CLI 與 GUI 工作全部通過後才上傳正式附件, 建立 Release 不代表產物已就緒, 請確認 Actions 結果與附件清單, 已發布 Tag 與附件不重寫
+
+### 選用的本機來源封裝
+
+以下 helper 仍可供維護者自行檢查來源包, 會建置套件, 不要在只做最小測試的情境執行
 
 ```powershell
 python launch-cli.py scripts.release prepare --dry-run
@@ -36,7 +44,7 @@ dist/v0.2.0/
 
 同一版本只能取代由本工具管理且內容未被另行修改的輸出, 發現未知檔案或 hash 不符時會停止, 不覆寫現有資料
 
-## 發布 GitHub Release
+## 選用的本機來源發布
 
 先檢查 diff 與 manifest, 自行 commit 預定發布的來源變更, helper 不會自動 commit
 
@@ -53,11 +61,11 @@ python launch-cli.py scripts.release publish v0.2.0 --asset-root C:\path\release
 
 ## Windows 與 macOS 免安裝 CLI / GUI
 
-兩個平台各自提供獨立 CLI 與 GUI, 不需要同時下載, Windows GUI 是單一免安裝 EXE, macOS GUI 是 `.app` ZIP, CLI 另以 ZIP 提供, 原始碼 CLI、核心 wheel 與來源 ZIP 保留原本的發布方式, Windows EXE 內嵌 GUI、`_internal/launch-worker.exe` 與 WebView2, CLI 包支援終端機與瀏覽器模式, 內含共用 React + Workbench UI 頁面但不含 WebView2
+兩個平台各自提供獨立 CLI 與 GUI, 不需要同時下載, Windows GUI 是單一免安裝 EXE, macOS GUI 是 `.app` ZIP, CLI 另以 ZIP 提供, Windows EXE 內嵌 GUI、`_internal/launch-worker.exe` 與 WebView2, CLI 包支援終端機與瀏覽器模式, 內含共用 React + Workbench UI 頁面但不含 WebView2
 
 正式 CLI / GUI 產物只由 `.github/workflows/desktop.yml` 的 `Release portable desktop applications` 建置, 本機 `gui.packaging.build` 與 `distribution.build_cli` 只用於測試, 不把本機測試 EXE 或 ZIP 上傳成正式版本
 
-發布來源 Release 後, GUI 與 CLI 工作分開, 各自在 Windows x64、macOS arm64、macOS x64 runner 執行 `python launch-cli.py scripts.release desktop <tag>` 或 `python launch-cli.py scripts.release cli <tag>`, 共用 release helper 的完整 Python 測試、版本與打包檢查
+建立 Release 後, 來源、GUI 與 CLI 工作分開, GUI 與 CLI 各自在 Windows x64、macOS arm64、macOS x64 runner 執行 `python launch-cli.py scripts.release desktop <tag>` 或 `python launch-cli.py scripts.release cli <tag>`, 共用 release helper 的完整 Python 測試、版本與打包檢查
 
 | runner | 成品 | 相依 |
 | --- | --- | --- |
@@ -68,7 +76,7 @@ python launch-cli.py scripts.release publish v0.2.0 --asset-root C:\path\release
 | macOS Apple Silicon CLI | `my-py-tools-<version>-cli-macos-arm64.zip` | 內含 Python、工具套件與網頁介面, 使用既有瀏覽器 |
 | macOS Intel CLI | `my-py-tools-<version>-cli-macos-x64.zip` | 內含 Python、工具套件與網頁介面, 使用既有瀏覽器 |
 
-GUI EXE / ZIP 搭配 `desktop-manifest-<os>-<architecture>.json`, 記錄格式、Python、工具、Workbench UI commit 與來源 hash、瀏覽器 Runtime 模式、大小及 SHA-256, Windows 另記錄內嵌 payload 的檔案數、壓縮 / 解壓容量與 SHA-256, 發布前直接讀取 EXE 內的 payload 驗證 CRC、必要檔案與安全路徑, 確認只有 GUI 對外入口, CLI ZIP 搭配 `cli-manifest-<os>-<architecture>.json`, 記錄工具清單、需原始碼的開發工具、終端機 / 瀏覽器模式、共用介面來源、入口與 hash, 所有平台的原生 GUI smoke test、CLI 執行與瀏覽器轉檔測試通過後, publish job 才上傳十二個附件並核對 GitHub 回傳的大小與 SHA-256, 已存在的附件不覆寫
+GUI EXE / ZIP 搭配 `desktop-manifest-<os>-<architecture>.json`, 記錄格式、Python、工具、Workbench UI commit 與來源 hash、瀏覽器 Runtime 模式、大小及 SHA-256, Windows 另記錄內嵌 payload 的檔案數、壓縮 / 解壓容量與 SHA-256, 發布前直接讀取 EXE 內的 payload 驗證 CRC、必要檔案與安全路徑, 確認只有 GUI 對外入口, CLI ZIP 搭配 `cli-manifest-<os>-<architecture>.json`, 記錄工具清單、需原始碼的開發工具、終端機 / 瀏覽器模式、共用介面來源、入口與 hash, 來源工作及所有平台的原生 GUI smoke test、CLI 執行與瀏覽器轉檔測試通過後, publish job 才上傳十六個附件並核對 GitHub 回傳的大小與 SHA-256, 包含四個來源附件與十二個免安裝附件, 已存在的附件不覆寫
 
 ### CLI 使用與本機測試
 

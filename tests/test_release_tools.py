@@ -196,7 +196,7 @@ class ReleaseToolTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.repo = Path(self.temporary.name)
+        self.repo = Path(self.temporary.name).resolve()
         (self.repo / "packages/workspace_core").mkdir(parents=True)
         (self.repo / "documents").mkdir()
         (self.repo / "VERSION").write_text("0.2.0\n", encoding="utf-8")

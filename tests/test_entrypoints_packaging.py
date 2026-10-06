@@ -47,7 +47,7 @@ class EntryPointTests(unittest.TestCase):
     @unittest.skipUnless(sys.platform == "win32", "Windows PowerShell launchers")
     def test_gui_ps1_starts_hidden_without_waiting_and_quotes_native_arguments(self):
         with tempfile.TemporaryDirectory(prefix="GUI launch ") as temporary:
-            directory = Path(temporary)
+            directory = Path(temporary).resolve()
             script = directory / "launch-gui.ps1"
             shutil.copy2(ROOT / script.name, script)
             (directory / "launch-gui.exe").write_bytes(b"fixture")
